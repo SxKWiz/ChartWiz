@@ -1,0 +1,109 @@
+
+'use server';
+
+import { analyzeChartImage, type AnalyzeChartImageOutput } from '@/ai/flows/analyze-chart-image';
+import { textChat, type TextChatOutput } from '@/ai/flows/text-chat-flow';
+import { summarizeChatHistory, type SummarizeChatHistoryOutput } from '@/ai/flows/summarize-chat-history';
+import { scanForPatterns, type ScanForPatternsOutput } from '@/ai/flows/scan-for-patterns-flow';
+import type { Message } from '@/lib/types';
+import type { Persona } from '@/lib/types';
+
+type GetAiResponseOutput = { 
+  analysis: string; 
+  recommendation?: AnalyzeChartImageOutput['recommendation'];
+  alternativeScenario?: string;
+}
+
+export async function getAiResponse(formData: FormData): Promise<{ answer?: GetAiResponseOutput; error?: string }> {
+  let question = formData.get('question') as string;
+  const imageFiles = formData.getAll('images') as File[];
+  const personaDescription = formData.get('persona') as string | undefined;
+
+  if (!question && imageFiles.length === 0) {
+    return { error: 'A question or an image is required.' };
+  }
+  
+  if (imageFiles.length > 0 && imageFiles.some(f => f.size > 0)) {
+    if (!question) {
+      if (imageFiles.length > 1) {
+        question = "Analyze these charts. Perform a multi-timeframe or correlation analysis and provide a summary of key features, potential trends, and a trade recommendation based on the combined information.";
+      } else {
+        question = "Analyze this chart and provide a summary of its key features and potential trends, along with a trade recommendation.";
+      }
+    }
+
+    try {
+      const chartImageUris = await Promise.all(
+        imageFiles.map(async (file) => {
+          const imageBuffer = await file.arrayBuffer();
+          const imageBase64 = Buffer.from(imageBuffer).toString('base64');
+          const mimeType = file.type;
+          return `data:${mimeType};base64,${imageBase64}`;
+        })
+      );
+
+      const result = await analyzeChartImage({
+        chartImageUri1: chartImageUris[0],
+        chartImageUri2: chartImageUris.length > 1 ? chartImageUris[1] : undefined,
+        question,
+        tradingPersona: personaDescription,
+      });
+      
+      return { answer: result };
+    } catch (e) {
+      console.error(e);
+      const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
+      return { error: `Failed to get AI response: ${errorMessage}` };
+    }
+  }
+
+  if (!question) {
+    return { error: 'A question is required when no image is provided.' };
+  }
+
+  try {
+    const result: TextChatOutput = await textChat({ question });
+    return {
+      answer: {
+        analysis: result.answer,
+        recommendation: undefined,
+        alternativeScenario: undefined,
+      },
+    };
+  } catch (e) {
+    console.error(e);
+    const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
+    return { error: `Failed to get AI response: ${errorMessage}` };
+  }
+}
+
+export async function getSummaryTitleForHistory(messages: Message[]): Promise<string> {
+  // Format the messages into a single string for the AI.
+  const chatHistory = messages
+    .map(m => `${m.role}: ${typeof m.content === 'string' ? m.content : '(Image Analysis)'}`)
+    .join('\n');
+
+  try {
+    const result: SummarizeChatHistoryOutput = await summarizeChatHistory({ chatHistory });
+    return result.summary;
+  } catch (e) {
+    console.error('Failed to get summary title:', e);
+    // Fallback to a generic title if the summary fails.
+    const firstUserMessage = messages.find(m => m.role === 'user');
+    if (typeof firstUserMessage?.content === 'string') {
+      return firstUserMessage.content.substring(0, 30) + '...';
+    }
+    return 'Chat Analysis';
+  }
+}
+
+export async function scanScreenForPatterns(chartImageUri: string): Promise<ScanForPatternsOutput> {
+  try {
+    const result = await scanForPatterns({ chartImageUri });
+    return result;
+  } catch (e) {
+    console.error('Pattern scanning failed:', e);
+    // Return a "not found" response in case of error to avoid false positives.
+    return { patternFound: false };
+  }
+}
