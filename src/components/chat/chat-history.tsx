@@ -60,7 +60,10 @@ export function ChatHistory({
 
   const handleRenameSubmit = () => {
     if (sessionToEdit && newTitle.trim()) {
-      renameSession(sessionToEdit.id, newTitle.trim());
+      // Limit title length to prevent UI issues while allowing longer names
+      const trimmedTitle = newTitle.trim();
+      const finalTitle = trimmedTitle.length > 100 ? trimmedTitle.substring(0, 100) + '...' : trimmedTitle;
+      renameSession(sessionToEdit.id, finalTitle);
       setRenameDialogOpen(false);
       setSessionToEdit(null);
     }
@@ -79,13 +82,28 @@ export function ChatHistory({
     }
   };
 
-  // Format relative time for session
-  const formatRelativeTime = (sessionId: string) => {
-    // Simple time formatting - in a real app, you'd use the actual timestamp
-    const index = sessions.findIndex(s => s.id === sessionId);
-    if (index === 0) return 'Now';
-    if (index < 3) return `${index}h ago`;
-    return `${index}d ago`;
+  // Format relative time using actual timestamp
+  const formatRelativeTime = (timestamp: number) => {
+    const now = Date.now();
+    const diff = now - timestamp;
+    
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    const weeks = Math.floor(days / 7);
+    const months = Math.floor(days / 30);
+    
+    if (seconds < 60) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days < 7) return `${days}d ago`;
+    if (weeks < 4) return `${weeks}w ago`;
+    if (months < 12) return `${months}mo ago`;
+    
+    // For older chats, show the actual date
+    const date = new Date(timestamp);
+    return date.toLocaleDateString();
   };
 
   return (
@@ -105,30 +123,36 @@ export function ChatHistory({
                   onClick={() => setActiveSessionId(session.id)}
                   isActive={activeSessionId === session.id}
                   className={cn(
-                    "w-full text-left justify-start p-3 rounded-xl transition-all duration-200 hover:bg-sidebar-accent/70 group-hover:shadow-md",
+                    "w-full text-left justify-start p-3 rounded-xl transition-all duration-200 hover:bg-sidebar-accent/70 group-hover:shadow-md min-h-[70px]",
                     activeSessionId === session.id && "bg-sidebar-accent shadow-lg ring-1 ring-primary/20"
                   )}
                 >
                   <div className="flex items-start gap-3 w-full min-w-0">
                     <div className={cn(
-                      "p-2 rounded-lg shrink-0 transition-colors duration-200",
+                      "p-2 rounded-lg shrink-0 transition-colors duration-200 mt-1",
                       activeSessionId === session.id 
                         ? "bg-primary/20 text-primary" 
                         : "bg-muted/50 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary"
                     )}>
                       <MessageSquare className="h-4 w-4" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className={cn(
-                          "truncate font-medium text-sm transition-colors duration-200",
+                    <div className="flex-1 min-w-0 flex flex-col gap-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className={cn(
+                          "font-medium text-sm transition-colors duration-200 leading-5 line-clamp-2 break-words",
                           activeSessionId === session.id 
                             ? "text-sidebar-primary" 
                             : "text-sidebar-foreground/90 group-hover:text-sidebar-primary"
-                        )}>
+                        )} 
+                        title={session.title}
+                        style={{ 
+                          wordBreak: 'break-word',
+                          overflowWrap: 'break-word',
+                          hyphens: 'auto'
+                        }}>
                           {session.title}
-                        </span>
-                        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-all duration-200 gap-1">
+                        </h3>
+                        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-all duration-200 gap-1 shrink-0">
                           <div
                             className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-sidebar-accent hover:text-primary transition-colors duration-200 cursor-pointer"
                             onClick={(e) => {
@@ -151,15 +175,11 @@ export function ChatHistory({
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Clock className="h-3 w-3 text-muted-foreground/60" />
-                        <span className="text-xs text-muted-foreground/80">
-                          {formatRelativeTime(session.id)}
-                        </span>
-                        <span className="text-xs text-muted-foreground/60">•</span>
-                        <span className="text-xs text-muted-foreground/80">
-                          {session.messages.length} messages
-                        </span>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground/80">
+                        <Clock className="h-3 w-3 shrink-0" />
+                        <span className="shrink-0">{formatRelativeTime(session.timestamp)}</span>
+                        <span className="shrink-0">•</span>
+                        <span className="shrink-0">{session.messages.length} messages</span>
                       </div>
                     </div>
                   </div>
@@ -184,12 +204,11 @@ export function ChatHistory({
               onChange={(e) => setNewTitle(e.target.value)}
               placeholder="Enter new chat title"
               onKeyDown={(e) => e.key === 'Enter' && handleRenameSubmit()}
-              maxLength={25}
               className="focus-ring"
               autoFocus
             />
             <p className="text-xs text-muted-foreground mt-2">
-              {newTitle.length}/25 characters
+              {newTitle.length} characters {newTitle.length > 100 && '(will be truncated to 100 characters)'}
             </p>
           </div>
           <DialogFooter>

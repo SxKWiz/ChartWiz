@@ -54,7 +54,8 @@ const initialSession: ChatSession = {
   messages: [
     { id: nanoid(), role: 'assistant', content: "Hello! I'm ChartWiz. Upload a crypto chart and I'll analyze it for you." },
   ],
-  personaId: 'default'
+  personaId: 'default',
+  timestamp: Date.now()
 };
 
 // Memoized session operations
@@ -65,12 +66,13 @@ const useSessionOperations = () => {
       title: 'New Chat',
       messages: [{ id: nanoid(), role: 'assistant', content: "Hello! I'm Wizz. Upload a crypto chart and I'll analyze it for you." }],
       personaId: 'default',
+      timestamp: Date.now(),
     }),
     
     updateSessionTitle: (sessions: ChatSession[], sessionId: string, newTitle: string): ChatSession[] =>
       sessions.map(session => 
         session.id === sessionId 
-          ? { ...session, title: newTitle.substring(0, 25) } 
+          ? { ...session, title: newTitle } 
           : session
       ),
       
@@ -89,7 +91,14 @@ const useLocalStorage = () => {
     loadSessions: (): ChatSession[] => {
       try {
         const saved = localStorage.getItem('chatSessions');
-        return saved ? JSON.parse(saved) : [];
+        if (!saved) return [];
+        
+        const sessions = JSON.parse(saved);
+        // Migrate sessions without timestamps
+        return sessions.map((session: ChatSession, index: number) => ({
+          ...session,
+          timestamp: session.timestamp || (Date.now() - (index * 1000 * 60 * 60)) // Assign descending timestamps for old sessions
+        }));
       } catch {
         return [];
       }
@@ -169,7 +178,7 @@ function ChatLayoutContent() {
       setSessions(savedSessions);
       setActiveSessionId(savedActiveId || savedSessions[0].id);
     } else {
-      const newSession = { ...initialSession, id: nanoid(), title: 'New Chat' };
+      const newSession = { ...initialSession, id: nanoid(), title: 'New Chat', timestamp: Date.now() };
       setSessions([newSession]);
       setActiveSessionId(newSession.id);
     }
