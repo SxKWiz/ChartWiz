@@ -26,8 +26,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Edit, Trash2, MessageSquare, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -128,10 +129,8 @@ export function ChatHistory({
                           {session.title}
                         </span>
                         <div className="flex items-center opacity-0 group-hover:opacity-100 transition-all duration-200 gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 hover:bg-sidebar-accent hover:text-primary transition-colors duration-200"
+                          <div
+                            className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-sidebar-accent hover:text-primary transition-colors duration-200 cursor-pointer"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleRenameClick(session);
@@ -139,11 +138,9 @@ export function ChatHistory({
                             title="Rename chat"
                           >
                             <Edit className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 hover:bg-destructive/10 hover:text-destructive transition-colors duration-200"
+                          </div>
+                          <div
+                            className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-destructive/10 hover:text-destructive transition-colors duration-200 cursor-pointer"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleDeleteClick(session);
@@ -151,7 +148,7 @@ export function ChatHistory({
                             title="Delete chat"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                          </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 mt-1">
