@@ -104,6 +104,12 @@ export async function scanScreenForPatterns(chartImageUri: string): Promise<Scan
   } catch (e) {
     console.error('Pattern scanning failed:', e);
     // Return a "not found" response in case of error to avoid false positives.
-    return { patternFound: false };
+    return {
+      patternFound: false,
+      primaryTrend: 'Error',
+      supportResistance: 'Error',
+      volumeAnalysis: 'Error',
+      synthesis: 'An error occurred during pattern scanning.',
+    };
   }
 }

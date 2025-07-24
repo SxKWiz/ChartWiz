@@ -9,8 +9,8 @@
  * - AnalyzeChartImageOutput - The output type for the analyzeChartImage function.
  */
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import {ai} from '../genkit';
+import {z} from 'zod';
 
 const AnalyzeChartImageInputSchema = z.object({
   chartImageUri1: z
@@ -86,9 +86,9 @@ Analyze the provided chart image(s) and answer the user's question. Identify any
 **Multi-Chart Analysis Detected:** You have been provided with two charts. You must perform a multi-timeframe analysis. First, identify which chart represents the higher timeframe (HTF) and which is the lower timeframe (LTF). Use the HTF to establish the primary trend and overall market structure. Then, use the LTF to find a precise entry point that aligns with the HTF trend. Your final recommendation should synthesize insights from BOTH charts.
 {{/if}}
 
-Based on your comprehensive analysis, provide a detailed explanation and a specific trade recommendation.
+Based on your comprehensive analysis, provide a detailed explanation and a specific, actionable trade recommendation. If you identify multiple patterns or signals, report all of them.
 
-Your trade recommendation must include an entry price, one or more take-profit levels, and a stop-loss level. For EACH of these price points (entry, every take-profit, and stop-loss), you MUST provide a clear, concise reason based on your technical analysis (e.g., "Entry based on retest of broken resistance," "Stop-loss placed below the recent swing low," "Take-profit at the 1.618 Fibonacci extension"). Adhere to sound risk management principles consistent with your persona.
+Your trade recommendation must include an entry price, one or more take-profit levels, and a stop-loss level. For EACH of these price points (entry, every take-profit, and stop-loss), you MUST provide a clear, concise reason based on your technical analysis (e.g., "Entry based on retest of broken resistance," "Stop-loss placed below the recent swing low," "Take-profit at the 1.618 Fibonacci extension"). Adhere to sound risk management principles consistent with your persona. Your recommendation should incorporate strategies for trade scaling (if applicable) and the use of trailing stops, especially in volatile conditions.
 
 **CRITICAL Step: Risk/Reward Calculation**
 You must calculate the risk/reward ratio for the proposed trade. Use the entry price, the *first* take-profit level, and the stop-loss level. The formula is: (Potential Reward) / (Potential Risk).
@@ -225,8 +225,24 @@ Before finalizing your output, perform a self-correction pass. Review your entir
 - *Correlation Analysis*: Note any strong correlation with Bitcoin (BTC) or the broader market that might influence the trade's outcome.
 
 ### Advanced Pattern Recognition
-- *Harmonic Patterns*: Be aware of and identify potential harmonic patterns like Gartley, Bat, Butterfly, Crab, and Cypher, which have specific Fibonacci ratio requirements.
-- *Elliott Wave Theory*: If a clear wave structure is visible, attempt to identify the current wave count (e.g., within a 5-wave impulse or a 3-wave correction) to understand the broader trend context.
+- *Harmonic Patterns*: Actively identify potential harmonic patterns like Gartley, Bat, Butterfly, Crab, and Cypher. If found, specify the pattern type and the key Fibonacci ratios that define it.
+- *Elliott Wave Theory*: If a clear wave structure is visible, you MUST attempt to identify the current wave count (e.g., "in Wave 3 of a 5-wave impulse" or "in Wave C of an A-B-C correction") to provide context for the broader trend.
+
+**6. Volatility Assessment:**
+- Visually estimate the market's volatility. You can do this by observing the size of recent candles or the width of indicators like Bollinger Bands if present.
+- Mention the current volatility in your analysis (e.g., "The market is showing high volatility with wide-ranging candles.").
+
+**7. Contradiction Detection & Confidence Score:**
+- Identify and report any conflicting signals or patterns (e.g., "a bullish divergence on the RSI contradicts the bearish head and shoulders pattern").
+- Provide a confidence score (as a percentage) for your final trade recommendation and briefly justify it.
+
+**8. Handling Multiple Inputs:**
+- If multiple chart images are provided, perform a multi-chart analysis. Compare the timeframes or assets to form a more robust, synthesized view.
+- If multiple modalities are present (e.g., image and news text), integrate the information into a single, coherent analysis.
+
+**9. Ambiguity & Fallbacks:**
+- If a chart is too ambiguous, unclear, or lacks sufficient price action for a high-confidence analysis, you MUST state this clearly.
+- In such cases, do not force a trade recommendation. Instead, identify the key price levels to watch and explain what price action would be needed to confirm a specific bullish or bearish bias.
 
 ---
 Chart Image 1: {{media url=chartImageUri1}}
@@ -234,6 +250,10 @@ Chart Image 1: {{media url=chartImageUri1}}
 Chart Image 2: {{media url=chartImageUri2}}
 {{/if}}
 Question: {{{question}}}
+
+---
+
+
 `,
 });
 
@@ -243,7 +263,7 @@ const analyzeChartImageFlow = ai.defineFlow(
     inputSchema: AnalyzeChartImageInputSchema,
     outputSchema: AnalyzeChartImageOutputSchema,
   },
-  async input => {
+  async (input: AnalyzeChartImageInput) => {
     const {output} = await analyzeChartImagePrompt(input);
     return output!;
   }
