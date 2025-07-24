@@ -45,6 +45,12 @@ export interface ProcessedRecommendation extends RawRecommendation {
 function extractPrice(priceString?: string): number | null {
   if (!priceString) return null;
   
+  // Check for explicit N/A or similar indicators
+  const naPatterns = /^(n\/a|na|not applicable|cannot be determined|no entry|no target|no stop)$/i;
+  if (naPatterns.test(priceString.trim())) {
+    return null;
+  }
+  
   // Remove common currency symbols and text
   const cleaned = priceString
     .replace(/[\$€£¥₿]/g, '')
@@ -107,6 +113,18 @@ export function processRecommendation(
   const errors: string[] = [];
   const warnings: string[] = [];
   
+  // Check if this is a legitimate "no trade" scenario
+  const isNoTradeScenario = 
+    (recommendation.entryPrice.value?.toLowerCase().includes('n/a') || 
+     recommendation.entryPrice.reason?.toLowerCase().includes('cannot be determined') ||
+     recommendation.entryPrice.reason?.toLowerCase().includes('no entry') ||
+     recommendation.entryPrice.reason?.toLowerCase().includes('violation of')) &&
+    (recommendation.stopLoss.value?.toLowerCase().includes('n/a') ||
+     recommendation.stopLoss.reason?.toLowerCase().includes('not applicable')) &&
+    (recommendation.takeProfit.some(tp => 
+      tp.value?.toLowerCase().includes('n/a') || 
+      tp.reason?.toLowerCase().includes('cannot be assessed')));
+  
   // Extract numerical values
   const entryPriceNum = extractPrice(recommendation.entryPrice.value);
   const takeProfitLevelsNum = recommendation.takeProfit
@@ -114,18 +132,23 @@ export function processRecommendation(
     .filter((price): price is number => price !== null);
   const stopLossNum = extractPrice(recommendation.stopLoss.value);
   
-  // Validate price extraction
-  if (entryPriceNum === null) {
+  // Validate price extraction - but be lenient for legitimate no-trade scenarios
+  if (entryPriceNum === null && !isNoTradeScenario) {
     errors.push('Could not extract numerical entry price');
   }
-  if (stopLossNum === null) {
+  if (stopLossNum === null && !isNoTradeScenario) {
     errors.push('Could not extract numerical stop loss');
   }
-  if (takeProfitLevelsNum.length === 0) {
+  if (takeProfitLevelsNum.length === 0 && !isNoTradeScenario) {
     errors.push('Could not extract any numerical take profit levels');
   }
-  if (takeProfitLevelsNum.length !== recommendation.takeProfit.length) {
+  if (takeProfitLevelsNum.length !== recommendation.takeProfit.length && !isNoTradeScenario) {
     warnings.push('Some take profit levels could not be parsed');
+  }
+  
+  // For no-trade scenarios, add informational message
+  if (isNoTradeScenario) {
+    warnings.push('AI correctly identified this as a no-trade scenario based on trading strategy rules');
   }
   
   // Determine asset and precision
@@ -215,20 +238,40 @@ export function enhanceRecommendation(
 ): RawRecommendation {
   const { precision, calculations } = processed;
   
-  // Format prices with appropriate precision
+  // Check if this is a no-trade scenario
+  const isNoTradeScenario = processed.validation.warnings.some(w => 
+    w.includes('no-trade scenario'));
+  
+  // If it's a no-trade scenario, preserve the original reasoning
+  if (isNoTradeScenario) {
+    return {
+      entryPrice: processed.entryPrice,
+      stopLoss: processed.stopLoss,
+      takeProfit: processed.takeProfit,
+      riskRewardRatio: processed.riskRewardRatio || 'N/A'
+    };
+  }
+  
+  // Format prices with appropriate precision for valid trades
   const enhanced: RawRecommendation = {
     entryPrice: {
-      value: `$${formatPrice(calculations.entryPriceNum, precision)}`,
+      value: calculations.entryPriceNum > 0 
+        ? `$${formatPrice(calculations.entryPriceNum, precision)}`
+        : processed.entryPrice.value,
       reason: processed.entryPrice.reason || 'Technical entry level'
     },
     stopLoss: {
-      value: `$${formatPrice(calculations.stopLossNum, precision)}`,
+      value: calculations.stopLossNum > 0 
+        ? `$${formatPrice(calculations.stopLossNum, precision)}`
+        : processed.stopLoss.value,
       reason: processed.stopLoss.reason || 'Risk management level'
     },
-    takeProfit: calculations.takeProfitLevelsNum.map((tp, index) => ({
-      value: `$${formatPrice(tp, precision)}`,
-      reason: processed.takeProfit[index]?.reason || 'Technical target level'
-    })),
+    takeProfit: calculations.takeProfitLevelsNum.length > 0
+      ? calculations.takeProfitLevelsNum.map((tp, index) => ({
+          value: `$${formatPrice(tp, precision)}`,
+          reason: processed.takeProfit[index]?.reason || 'Technical target level'
+        }))
+      : processed.takeProfit,
     riskRewardRatio: calculations.riskRewardRatios.length > 0 
       ? formatRiskReward(calculations.riskRewardRatios[0])
       : processed.riskRewardRatio

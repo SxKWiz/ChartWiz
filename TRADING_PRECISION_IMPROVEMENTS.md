@@ -106,6 +106,8 @@ The AI now performs mandatory validation:
 - Detailed logging for debugging
 - Preservation of original output if validation completely fails
 - Warning system for minor issues
+- **Smart N/A handling**: Recognizes legitimate no-trade scenarios and preserves educational reasoning
+- **Timeframe mismatch detection**: Properly handles when chart timeframe doesn't match trading strategy
 
 ## Usage Examples
 
@@ -134,6 +136,8 @@ R/R: 1.8:1
 5. **Professional Presentation**: Consistent, clean formatting
 6. **Reduced Errors**: Validation catches common mistakes
 7. **Enhanced User Trust**: More reliable and professional recommendations
+8. **Smart No-Trade Detection**: Properly handles scenarios where no trade should be recommended
+9. **Educational Value**: Provides reasoning even when no trade is possible
 
 ## Testing
 
