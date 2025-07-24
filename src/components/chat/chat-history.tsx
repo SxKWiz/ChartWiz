@@ -3,19 +3,12 @@
 
 import React, { useState } from 'react';
 import type { ChatSession } from '@/lib/types';
-import { cn } from '@/lib/utils';
 import { ScrollArea } from '../ui/scroll-area';
 import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
 } from '@/components/ui/sidebar';
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-} from '@/components/ui/context-menu';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -89,32 +82,31 @@ export function ChatHistory({
       <ScrollArea className="h-full px-2">
         <SidebarMenu>
           {sessions.map((session) => (
-            <ContextMenu key={session.id}>
-              <ContextMenuTrigger asChild>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    onClick={() => setActiveSessionId(session.id)}
-                    isActive={activeSessionId === session.id}
-                    className="w-full text-left justify-start"
-                  >
-                    <span className="truncate">{session.title}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </ContextMenuTrigger>
-              <ContextMenuContent>
-                <ContextMenuItem onClick={() => handleRenameClick(session)}>
-                  <Edit className="mr-2 h-4 w-4" />
-                  <span>Rename</span>
-                </ContextMenuItem>
-                <ContextMenuItem
-                  onClick={() => handleDeleteClick(session)}
-                  className="text-destructive"
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  <span>Delete</span>
-                </ContextMenuItem>
-              </ContextMenuContent>
-            </ContextMenu>
+            <SidebarMenuItem key={session.id} className="group">
+              <SidebarMenuButton
+                onClick={() => setActiveSessionId(session.id)}
+                isActive={activeSessionId === session.id}
+                className="w-full text-left justify-start"
+              >
+                <span className="truncate flex-grow">{session.title}</span>
+                <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                  <Edit
+                    className="mr-2 h-4 w-4 cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRenameClick(session);
+                    }}
+                  />
+                  <Trash2
+                    className="h-4 w-4 cursor-pointer text-destructive"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteClick(session);
+                    }}
+                  />
+                </div>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
           ))}
         </SidebarMenu>
       </ScrollArea>
