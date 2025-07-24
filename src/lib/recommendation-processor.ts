@@ -51,10 +51,12 @@ function extractPrice(priceString?: string): number | null {
     return null;
   }
   
-  // Remove common currency symbols and text
+  // Remove common currency symbols and conditional text but preserve the price
   const cleaned = priceString
     .replace(/[\$€£¥₿]/g, '')
     .replace(/[,\s]/g, '')
+    .replace(/\(conditional[^)]*\)/gi, '') // Remove conditional notes
+    .replace(/\(.*confirmation.*\)/gi, '') // Remove confirmation notes
     .replace(/around|approximately|near|at|level/gi, '');
   
   // Extract first number that looks like a price
@@ -113,17 +115,11 @@ export function processRecommendation(
   const errors: string[] = [];
   const warnings: string[] = [];
   
-  // Check if this is a legitimate "no trade" scenario
+  // Check if this is a legitimate "no trade" scenario (all three must be N/A)
   const isNoTradeScenario = 
-    (recommendation.entryPrice.value?.toLowerCase().includes('n/a') || 
-     recommendation.entryPrice.reason?.toLowerCase().includes('cannot be determined') ||
-     recommendation.entryPrice.reason?.toLowerCase().includes('no entry') ||
-     recommendation.entryPrice.reason?.toLowerCase().includes('violation of')) &&
-    (recommendation.stopLoss.value?.toLowerCase().includes('n/a') ||
-     recommendation.stopLoss.reason?.toLowerCase().includes('not applicable')) &&
-    (recommendation.takeProfit.some(tp => 
-      tp.value?.toLowerCase().includes('n/a') || 
-      tp.reason?.toLowerCase().includes('cannot be assessed')));
+    recommendation.entryPrice.value?.toLowerCase().includes('n/a') &&
+    recommendation.stopLoss.value?.toLowerCase().includes('n/a') &&
+    recommendation.takeProfit.every(tp => tp.value?.toLowerCase().includes('n/a'));
   
   // Extract numerical values
   const entryPriceNum = extractPrice(recommendation.entryPrice.value);
