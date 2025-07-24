@@ -7,12 +7,27 @@ export default {
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
     './src/app/**/*.{js,ts,jsx,tsx,mdx}',
   ],
+  // Enable JIT mode for better performance
+  mode: 'jit',
+  // Optimize CSS output
+  corePlugins: {
+    // Disable unused core plugins to reduce CSS size
+    preflight: true,
+    container: false, // Use custom container if needed
+    accessibility: true,
+    backgroundOpacity: false, // Use bg-opacity utilities instead
+    borderOpacity: false, // Use border-opacity utilities instead
+    textOpacity: false, // Use text-opacity utilities instead
+    divideOpacity: false, // Use divide-opacity utilities instead
+    placeholderOpacity: false, // Use placeholder-opacity utilities instead
+    ringOpacity: false, // Use ring-opacity utilities instead
+  },
   theme: {
     extend: {
       fontFamily: {
-        body: ['Inter', 'sans-serif'],
-        headline: ['Inter', 'sans-serif'],
-        code: ['monospace'],
+        body: ['var(--font-inter)', 'Inter', 'sans-serif'],
+        headline: ['var(--font-inter)', 'Inter', 'sans-serif'],
+        code: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', 'monospace'],
       },
       colors: {
         background: 'hsl(var(--background))',
@@ -96,4 +111,8 @@ export default {
     },
   },
   plugins: [require('tailwindcss-animate')],
+  // Optimize for production
+  future: {
+    hoverOnlyWhenSupported: true,
+  },
 } satisfies Config;

@@ -1,5 +1,9 @@
 import type {NextConfig} from 'next';
 
+const withBundleAnalyzer = require('@next/bundle-analyzer')({
+  enabled: process.env.ANALYZE === 'true',
+});
+
 const nextConfig: NextConfig = {
   /* config options here */
   typescript: {
@@ -8,6 +12,16 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  
+  // Performance optimizations
+  experimental: {
+    optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
+  },
+  
+  // Compression
+  compress: true,
+  
+  // Image optimization
   images: {
     remotePatterns: [
       {
@@ -17,7 +31,51 @@ const nextConfig: NextConfig = {
         pathname: '/**',
       },
     ],
+    formats: ['image/webp', 'image/avif'],
+    minimumCacheTTL: 60 * 60 * 24 * 30, // 30 days
   },
+  
+  // Webpack optimizations
+  webpack: (config, { isServer }) => {
+    // Tree shaking improvements
+    config.optimization.usedExports = true;
+    config.optimization.sideEffects = false;
+    
+    // Bundle splitting
+    if (!isServer) {
+      config.optimization.splitChunks = {
+        chunks: 'all',
+        cacheGroups: {
+          default: false,
+          vendors: false,
+          // Vendor chunk for large libraries
+          vendor: {
+            name: 'vendor',
+            chunks: 'all',
+            test: /node_modules/,
+            priority: 20,
+          },
+          // Separate chunk for UI components
+          ui: {
+            name: 'ui',
+            chunks: 'all',
+            test: /[\\/]components[\\/]ui[\\/]/,
+            priority: 30,
+          },
+          // Separate chunk for icons
+          icons: {
+            name: 'icons',
+            chunks: 'all',
+            test: /[\\/](lucide-react|@radix-ui\/react-icons)[\\/]/,
+            priority: 40,
+          },
+        },
+      };
+    }
+    
+    return config;
+  },
+
   async headers() {
     return [
       {
@@ -38,11 +96,42 @@ const nextConfig: NextConfig = {
           {
             key: 'Permissions-Policy',
             value: 'display-capture=(self)',
+          },
+          // Performance headers
+          {
+            key: 'X-DNS-Prefetch-Control',
+            value: 'on'
+          },
+          {
+            key: 'Strict-Transport-Security',
+            value: 'max-age=63072000; includeSubDomains; preload'
+          },
+          {
+            key: 'X-Frame-Options',
+            value: 'DENY'
+          },
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff'
+          },
+          {
+            key: 'Referrer-Policy',
+            value: 'origin-when-cross-origin'
           }
+        ],
+      },
+      {
+        // Cache static assets
+        source: '/static/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
         ],
       },
     ];
   },
 };
 
-export default nextConfig;
+export default withBundleAnalyzer(nextConfig);
