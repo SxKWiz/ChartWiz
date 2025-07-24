@@ -11,6 +11,8 @@
 
 import {ai} from '../genkit';
 import {z} from 'zod';
+import { validateAndEnhanceRecommendation, type RawRecommendation } from '../../lib/recommendation-processor';
+import { generateAnalysisContext } from '../../lib/chart-analysis-helpers';
 
 const AnalyzeChartImageInputSchema = z.object({
   chartImageUri1: z
@@ -90,17 +92,86 @@ Based on your comprehensive analysis, provide a detailed explanation and a speci
 
 Your trade recommendation must include an entry price, one or more take-profit levels, and a stop-loss level. For EACH of these price points (entry, every take-profit, and stop-loss), you MUST provide a clear, concise reason based on your technical analysis (e.g., "Entry based on retest of broken resistance," "Stop-loss placed below the recent swing low," "Take-profit at the 1.618 Fibonacci extension"). Adhere to sound risk management principles consistent with your persona. Your recommendation should incorporate strategies for trade scaling (if applicable) and the use of trailing stops, especially in volatile conditions.
 
-**CRITICAL Step: Risk/Reward Calculation**
-You must calculate the risk/reward ratio for the proposed trade. Use the entry price, the *first* take-profit level, and the stop-loss level. The formula is: (Potential Reward) / (Potential Risk).
-- Potential Reward = |Take Profit 1 - Entry Price|
-- Potential Risk = |Entry Price - Stop Loss|
-For example, if Entry=$100, TP1=$120, SL=$90, the Reward is $20 and the Risk is $10. The R/R is 20/10 = 2. You must format the output as a string like "2:1". Populate this value in the \`riskRewardRatio\` field. If the persona specifies a minimum R/R, ensure your recommendation meets it.
+**CRITICAL Step: Precise Price Level Identification**
+Before providing any price recommendations, you MUST:
+
+1. **Identify the Current Market Price**: Look at the most recent candle's close price on the chart. This is your baseline for all calculations.
+
+2. **Determine Asset Type and Precision**: Based on the chart title, pair name, or context:
+   - Bitcoin (BTC): Use whole numbers for prices above $10,000, one decimal for $1,000-$10,000
+   - Ethereum (ETH): Use 2-3 decimal places depending on price range
+   - Major altcoins: Use 3-4 decimal places
+   - Small-cap/meme coins: Use 5-8 decimal places as appropriate
+
+3. **Apply Technical Analysis Precision Rules**:
+   - **Support/Resistance**: Round to psychologically significant levels (e.g., $50,000 not $49,847)
+   - **Fibonacci Levels**: Use precise mathematical calculations, then round to appropriate tick size
+   - **Moving Averages**: Can be slightly more precise than psychological levels
+   - **Pattern Targets**: Calculate based on pattern height, then round appropriately
+
+**CRITICAL Step: Risk/Reward Calculation with Precision**
+You must calculate the risk/reward ratio for the proposed trade with mathematical precision:
+
+1. **Extract Numerical Values**: Convert your price recommendations to exact numbers
+   - Entry Price: [Your calculated entry level]
+   - Take Profit 1: [Your first TP level] 
+   - Stop Loss: [Your SL level]
+
+2. **Calculate with Formula**:
+   - Potential Reward = |Take Profit 1 - Entry Price|
+   - Potential Risk = |Entry Price - Stop Loss|
+   - Risk/Reward Ratio = Potential Reward ÷ Potential Risk
+
+3. **Example Calculation**:
+   - If Entry = $42,350, TP1 = $44,500, SL = $41,200
+   - Reward = |44,500 - 42,350| = $2,150
+   - Risk = |42,350 - 41,200| = $1,150
+   - R/R = 2,150 ÷ 1,150 = 1.87, formatted as "1.9:1"
+
+4. **Validation**: Ensure the R/R meets your persona's minimum requirements. If not, adjust the levels accordingly.
+
+5. **Format**: Always format as "X.X:1" (e.g., "2.5:1", "1.8:1", "3.2:1")
 
 **CRITICAL Step: "If/Then" Scenario Planning**
 After your main analysis, consider what would invalidate your primary recommendation. Formulate an "if/then" statement for the \`alternativeScenario\` field. Example: "If the price fails to hold the support at $50,000 and breaks down, the bullish thesis is invalidated. The next likely support would be near the $47,500 level." This is a mandatory step.
 
-**CRITICAL Final Step: Contradiction Check**
-Before finalizing your output, perform a self-correction pass. Review your entire analysis. Are there any contradictory signals? (e.g., a bullish chart pattern but bearish indicators like RSI divergence? A bullish candle pattern but it's right under major resistance?). If you find conflicting signals, you MUST acknowledge them in your analysis text. State the conflict clearly (e.g., "While the chart shows a bullish engulfing pattern, the overbought RSI suggests caution.") and adjust the confidence of your recommendation accordingly. Acknowledging contradictions is a sign of expert analysis.
+**CRITICAL Final Step: Price Validation & Contradiction Check**
+Before finalizing your output, perform these mandatory validation steps:
+
+1. **Price Logic Validation**:
+   - Verify entry price is reasonable relative to current market price
+   - Confirm take-profit levels are above entry for long trades (below for short trades)
+   - Ensure stop-loss is below entry for long trades (above for short trades)
+   - Check that all prices use appropriate decimal precision for the asset
+
+2. **Risk-Reward Verification**:
+   - Recalculate your R/R ratio using the exact formula
+   - Verify it meets your persona's minimum requirements
+   - Ensure the calculation is mathematically correct
+
+3. **Technical Coherence**:
+   - Confirm your price levels align with identified support/resistance
+   - Verify pattern targets are calculated correctly
+   - Check that Fibonacci levels are mathematically accurate
+
+4. **Contradiction Analysis**:
+   Review your entire analysis for contradictory signals (e.g., bullish pattern under major resistance, bearish divergence with bullish setup). If conflicts exist, acknowledge them clearly and adjust confidence accordingly.
+
+5. **Final Precision Check**:
+   - Ensure all price values are formatted consistently
+   - Verify decimal places match the asset type
+   - Confirm R/R ratio is formatted as "X.X:1"
+
+**PRECISION EXAMPLE:**
+For a Bitcoin chart showing current price around $43,250:
+- ✅ GOOD: "Entry: $42,800 (retest of broken resistance), TP1: $45,200 (1.618 Fibonacci extension), SL: $41,500 (below swing low), R/R: 1.8:1"
+- ❌ BAD: "Entry: around $42,800-43,000, TP1: approximately $45,000+, SL: somewhere below $41,000, R/R: good"
+
+The GOOD example shows:
+- Precise price levels with appropriate rounding for Bitcoin
+- Clear technical reasoning for each level
+- Exact R/R calculation
+- Consistent formatting
 
 ## Candlestick Pattern Knowledge Base
 
@@ -192,6 +263,29 @@ Before finalizing your output, perform a self-correction pass. Review your entir
 - **Medium Reliability (60-80%):** Symmetrical Triangles, Rectangles, Wedges.
 - **Context is Key:** Pattern significance increases dramatically near major support/resistance levels. Always confirm breakouts with a significant increase in volume. Use multiple timeframes for confirmation.
 
+### Precise Price Level Calculation Methods
+
+**Support and Resistance Identification:**
+- **Horizontal S/R**: Identify exact price levels where multiple touches occurred. Use the highest low for support and lowest high for resistance.
+- **Psychological Levels**: Round numbers (e.g., $50,000, $100, $1.00) act as strong S/R. Prioritize these in your analysis.
+- **Previous High/Low**: Use exact swing highs and lows as precise reference points.
+
+**Fibonacci Precision Guidelines:**
+- **Retracement Levels**: Calculate from swing high to swing low, use exact mathematical levels (23.6%, 38.2%, 50%, 61.8%, 78.6%).
+- **Extension Levels**: For targets, use 127.2%, 161.8%, 261.8% extensions from the retracement base.
+- **Rounding**: Round Fibonacci levels to the appropriate tick size for the asset, but maintain mathematical accuracy.
+
+**Moving Average Precision:**
+- **Dynamic S/R**: Use the exact MA value at the current candle, not rounded approximations.
+- **MA Confluence**: When multiple MAs converge, use the average of their values for more precise levels.
+- **Slope Consideration**: Factor in the MA's slope direction for more accurate future projections.
+
+**Pattern Target Calculations:**
+- **Measured Moves**: Calculate exact pattern height and project from breakout point.
+- **Head and Shoulders**: Target = Neckline - (Head High - Neckline)
+- **Triangles**: Target = Triangle height + breakout point
+- **Flags/Pennants**: Target = Flagpole height + breakout point
+
 ## Technical Indicator Analysis Knowledge Base
 
 ### Indicator Analysis
@@ -206,9 +300,18 @@ Before finalizing your output, perform a self-correction pass. Review your entir
 
 ## Risk & Trade Management Knowledge Base
 
-### Risk Calculation
-- *Stop Loss Placement*: Place stop-loss orders at logical levels based on chart structure (e.g., below a key support, outside a pattern boundary). The stop should also account for market volatility.
-- *Risk-Reward Analysis*: Calculate the R/R ratio for every potential trade to ensure the potential reward justifies the risk.
+### Precise Risk Calculation Methods
+
+**Stop Loss Placement Precision:**
+- *Structure-Based SL*: Place exactly 1-2 ticks below/above the identified support/resistance level.
+- *Pattern-Based SL*: For patterns, place SL outside the pattern boundary by 0.5-1% of the asset's price.
+- *Volatility-Adjusted SL*: In high volatility, increase SL distance by 50-100% from the base calculation.
+- *Time-Based SL*: Consider the timeframe - longer timeframes require wider stops (4H chart needs 2-3x the stop of 15min chart).
+
+**Risk-Reward Optimization:**
+- *Minimum R/R Thresholds*: Scalping 1:1, Day Trading 1.5:1, Swing Trading 2:1, Position Trading 3:1.
+- *Multiple TP Strategy*: Use at least 2 take-profit levels - first at 1:1 R/R, second at pattern target.
+- *Position Sizing*: Risk only 1-2% of account per trade, calculate exact position size based on stop distance.
 
 ### Volatility Assessment
 - *Visual ATR Estimation*: You cannot calculate ATR numerically, but you MUST visually estimate volatility. Are the recent candle bodies large (high volatility) or small (low volatility)? Are the price swings wide or narrow? Your stop-loss reasoning MUST mention this volatility assessment. For example, "Stop-loss is placed wider due to the recent high volatility," or "A tighter stop is appropriate given the current low volatility consolidation."
@@ -264,7 +367,55 @@ const analyzeChartImageFlow = ai.defineFlow(
     outputSchema: AnalyzeChartImageOutputSchema,
   },
   async (input: AnalyzeChartImageInput) => {
+    // Extract context information from the user's question
+    const context = generateAnalysisContext(input.question);
+    
     const {output} = await analyzeChartImagePrompt(input);
-    return output!;
+    
+    if (!output) {
+      throw new Error('No output received from AI analysis');
+    }
+    
+    // Post-process the recommendation for enhanced precision
+    try {
+      const rawRecommendation: RawRecommendation = {
+        entryPrice: output.recommendation.entryPrice,
+        takeProfit: output.recommendation.takeProfit,
+        stopLoss: output.recommendation.stopLoss,
+        riskRewardRatio: output.recommendation.riskRewardRatio
+      };
+      
+      const { enhanced, validation } = validateAndEnhanceRecommendation(
+        rawRecommendation,
+        context.currentPrice || undefined,
+        context.asset || undefined
+      );
+      
+      // Log validation warnings for debugging (in production, you might want to handle these differently)
+      if (validation.warnings.length > 0) {
+        console.warn('Recommendation validation warnings:', validation.warnings);
+      }
+      
+      if (validation.errors.length > 0) {
+        console.error('Recommendation validation errors:', validation.errors);
+        // Still return the original if validation fails completely
+        return output;
+      }
+      
+      // Return enhanced recommendation
+      return {
+        ...output,
+        recommendation: {
+          entryPrice: enhanced.entryPrice,
+          takeProfit: enhanced.takeProfit,
+          stopLoss: enhanced.stopLoss,
+          riskRewardRatio: enhanced.riskRewardRatio || output.recommendation.riskRewardRatio
+        }
+      };
+    } catch (error) {
+      console.error('Error in recommendation post-processing:', error);
+      // Return original output if post-processing fails
+      return output;
+    }
   }
 );
