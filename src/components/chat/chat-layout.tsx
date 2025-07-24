@@ -14,7 +14,7 @@ import {
   SidebarMenuButton,
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import { Plus, MonitorPlay } from 'lucide-react';
+import { Plus, MonitorPlay, Sparkles, Zap } from 'lucide-react';
 import { ChatHistory } from './chat-history';
 import { ChatMessages } from './chat-messages';
 import Link from 'next/link';
@@ -27,12 +27,15 @@ import { nanoid } from 'nanoid';
 // Lazy load the chat input component to reduce initial bundle size
 const ChatInput = lazy(() => import('./chat-input').then(module => ({ default: module.ChatInput })));
 
-// Loading component for lazy-loaded components
+// Enhanced loading component with modern design
 const ComponentLoader = () => (
-  <div className="flex items-center justify-center p-4">
-    <div className="flex items-center space-x-2">
-      <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-      <span className="text-sm text-muted-foreground">Loading...</span>
+  <div className="flex items-center justify-center p-6">
+    <div className="flex items-center space-x-3 animate-fade-in">
+      <div className="relative">
+        <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin"></div>
+        <div className="absolute inset-0 w-6 h-6 border-2 border-transparent border-t-primary/50 rounded-full animate-spin" style={{ animationDelay: '0.1s' }}></div>
+      </div>
+      <span className="text-sm text-muted-foreground font-medium">Loading...</span>
     </div>
   </div>
 );
@@ -314,28 +317,37 @@ function ChatLayoutContent() {
 
   return (
     <>
-      <Sidebar collapsible="icon">
-        <SidebarHeader>
-           <div className="flex items-center justify-between p-2">
+      <Sidebar collapsible="icon" className="glass-effect border-r border-border/50">
+        <SidebarHeader className="border-b border-border/50">
+           <div className="flex items-center justify-between p-3">
                 <SidebarMenu>
                   <SidebarMenuItem>
-                    <SidebarMenuButton className="!h-12 !p-3 !bg-transparent hover:!bg-sidebar-accent" asChild>
-                      <div className="flex items-center gap-2">
-                         <Logo />
-                         <span className="group-data-[collapsible=icon]:hidden">Wizz</span>
+                    <SidebarMenuButton className="!h-14 !p-4 !bg-transparent hover:!bg-sidebar-accent/70 transition-all duration-200 group" asChild>
+                      <div className="flex items-center gap-3">
+                         <div className="relative">
+                           <Logo />
+                           <div className="absolute -inset-1 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full opacity-0 group-hover:opacity-20 transition-opacity duration-200"></div>
+                         </div>
+                         <span className="group-data-[collapsible=icon]:hidden font-bold text-lg gradient-text">Wizz</span>
                       </div>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
                  <div className="group-data-[collapsible=icon]:hidden">
-                    <SidebarTrigger />
+                    <SidebarTrigger className="hover:bg-sidebar-accent/70 transition-colors duration-200" />
                  </div>
            </div>
         </SidebarHeader>
-        <SidebarContent>
-           <div className="flex items-center justify-between p-2">
-            <h2 className="text-base font-semibold group-data-[collapsible=icon]:hidden">Chat History</h2>
-            <Button variant="ghost" size="icon" onClick={createNewChat} className="group-data-[collapsible=icon]:hidden">
+        <SidebarContent className="p-3">
+           <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold group-data-[collapsible=icon]:hidden text-sidebar-foreground/90">Chat History</h2>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={createNewChat} 
+              className="group-data-[collapsible=icon]:hidden btn-hover-lift hover:bg-sidebar-accent/70 hover:glow-effect transition-all duration-200"
+              title="Start new chat"
+            >
               <Plus className="h-5 w-5" />
               <span className="sr-only">New Chat</span>
             </Button>
@@ -348,13 +360,18 @@ function ChatLayoutContent() {
             deleteSession={deleteSession}
           />
         </SidebarContent>
-        <SidebarHeader>
+        <SidebarHeader className="border-t border-border/50 p-3">
           <SidebarMenu>
             <SidebarMenuItem>
               <Link href="/share">
-                <SidebarMenuButton>
-                  <MonitorPlay />
-                  <span>Live Analysis</span>
+                <SidebarMenuButton className="btn-hover-lift hover:bg-sidebar-accent/70 transition-all duration-200 group">
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <MonitorPlay className="h-5 w-5" />
+                      <Zap className="h-3 w-3 absolute -top-1 -right-1 text-yellow-400 animate-pulse" />
+                    </div>
+                    <span className="font-medium">Live Analysis</span>
+                  </div>
                 </SidebarMenuButton>
               </Link>
             </SidebarMenuItem>
@@ -362,14 +379,17 @@ function ChatLayoutContent() {
         </SidebarHeader>
       </Sidebar>
       <SidebarInset className="flex flex-col h-screen">
-        <header className="flex items-center p-4 border-b">
-          <SidebarTrigger/>
-          <h1 className="text-xl font-semibold ml-4">{activeSession?.title || 'Wizz'}</h1>
+        <header className="flex items-center p-4 border-b border-border/50 glass-effect backdrop-blur-sm">
+          <SidebarTrigger className="hover:bg-accent/70 transition-colors duration-200"/>
+          <div className="flex items-center gap-3 ml-4">
+            <Sparkles className="h-5 w-5 text-primary animate-pulse-slow" />
+            <h1 className="text-xl font-bold gradient-text">{activeSession?.title || 'Wizz'}</h1>
+          </div>
         </header>
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto animate-fade-in">
           <ChatMessages messages={activeSession?.messages || []} />
         </div>
-        <div className="p-4 border-t bg-transparent">
+        <div className="p-4 border-t border-border/50 glass-effect backdrop-blur-sm">
           <div className="max-w-4xl mx-auto">
              {activeSession && (
                 <Suspense fallback={<ComponentLoader />}>

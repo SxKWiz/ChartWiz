@@ -51,7 +51,7 @@ export default function SharePage() {
   const [chart2, setChart2] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<any>(null);
   const scannerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 

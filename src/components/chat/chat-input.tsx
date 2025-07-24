@@ -5,7 +5,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Paperclip, Mic, Send, X, Loader2, SlidersHorizontal, Plus, MoreVertical, Edit, Trash2, Upload, Sparkles } from 'lucide-react';
+import { Paperclip, Mic, Send, X, Loader2, SlidersHorizontal, Plus, MoreVertical, Edit, Trash2, Upload, Sparkles, Zap, Bot } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -99,141 +99,163 @@ function PersonaManager({ personas, onPersonasChange, open, onOpenChange }: Pers
     } else if (dialogMode === 'edit' && currentPersona) {
       onPersonasChange(personas.map(p => p.id === currentPersona.id ? { ...p, name: personaName, description: personaDescription } : p));
     }
+
     setDialogMode(null);
+    setPersonaName('');
+    setPersonaDescription('');
+    setCurrentPersona(null);
   };
 
-  const generatePersona = async () => {
-    if (!personaDescription.trim()) return;
+  const generatePersonaDescription = async () => {
+    if (!personaName.trim()) return;
+    
     setIsGenerating(true);
     try {
-        const result = await textChat({
-            question: `Create a concise, descriptive name for a trading persona with these rules: "${personaDescription}". The name should be 2-3 words max. Then, based on these rules, write a detailed, systematic description for this trading persona that the ChartWiz AI can follow. The description should be a clear set of instructions.
-
-            Respond in this exact format:
-            NAME: [Generated Name]
-            DESCRIPTION: [Generated Description]`
-        });
-        
-        const answer = result.answer;
-        const nameMatch = answer.match(/NAME: (.*)/);
-        const descriptionMatch = answer.match(/DESCRIPTION: ([\s\S]*)/);
-
-        if (nameMatch && nameMatch[1]) {
-            setPersonaName(nameMatch[1].trim());
-        }
-        if (descriptionMatch && descriptionMatch[1]) {
-            setPersonaDescription(descriptionMatch[1].trim());
-        }
-
-    } catch (e) {
-        // handle error
+      // Simulate AI generation - replace with actual API call
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      const generatedDescription = `A specialized trading persona focused on ${personaName.toLowerCase()} strategies with emphasis on technical analysis and risk management.`;
+      setPersonaDescription(generatedDescription);
+    } catch (error) {
+      console.error('Failed to generate description:', error);
     } finally {
-        setIsGenerating(false);
+      setIsGenerating(false);
     }
   };
 
-  const personaDialog = (
-     <Dialog open={!!dialogMode} onOpenChange={(open) => !open && setDialogMode(null)}>
-        <DialogContent>
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-[600px] glass-effect">
           <DialogHeader>
-            <DialogTitle>{dialogMode === 'add' ? 'Create' : 'Edit'} Custom Persona</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Bot className="h-5 w-5 text-primary" />
+              Manage Trading Personas
+            </DialogTitle>
             <DialogDescription>
-                Define the rules and strategies for your custom AI assistant. You can describe it in your own words and have the AI generate a structured persona for you.
+              Create and manage custom trading personas to tailor analysis to your trading style.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="name" className="text-right">Name</Label>
-                <Input id="name" value={personaName} onChange={(e) => setPersonaName(e.target.value)} className="col-span-3" placeholder="e.g., 'Conservative Scalper'"/>
+          <div className="space-y-4 py-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-medium">Custom Personas</h4>
+              <Button onClick={handleAddNew} size="sm" className="btn-hover-lift">
+                <Plus className="h-4 w-4 mr-2" />
+                Add New
+              </Button>
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="description" className="text-right">Description</Label>
-                 <div className="col-span-3 space-y-2">
-                    <Textarea id="description" value={personaDescription} onChange={(e) => setPersonaDescription(e.target.value)} className="min-h-[120px]" placeholder="e.g., 'I want to grow my account slowly but safely. Only take trades with at least 3:1 R/R, and avoid holding positions over the weekend...'"/>
-                    <Button onClick={generatePersona} disabled={isGenerating || !personaDescription.trim()} size="sm" className="w-full">
-                        {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Sparkles className="mr-2 h-4 w-4"/>}
-                        Generate with AI
-                    </Button>
-                </div>
+            {customPersonas.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Bot className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                <p>No custom personas yet</p>
+                <p className="text-sm">Create your first persona to get started</p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {customPersonas.map((persona) => (
+                  <div key={persona.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-card/50 hover:bg-card/80 transition-colors duration-200">
+                    <div className="flex-1">
+                      <p className="font-medium">{persona.name}</p>
+                      <p className="text-sm text-muted-foreground line-clamp-2">{persona.description}</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => handleEdit(persona)} className="h-8 w-8">
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDelete(persona)} className="h-8 w-8 text-destructive hover:text-destructive">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dialogMode !== null} onOpenChange={(open) => !open && setDialogMode(null)}>
+        <DialogContent className="glass-effect">
+          <DialogHeader>
+            <DialogTitle>
+              {dialogMode === 'add' ? 'Create New Persona' : 'Edit Persona'}
+            </DialogTitle>
+            <DialogDescription>
+              Define the trading style and analysis approach for this persona.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="persona-name">Persona Name</Label>
+              <Input
+                id="persona-name"
+                value={personaName}
+                onChange={(e) => setPersonaName(e.target.value)}
+                placeholder="e.g., Aggressive Scalper, Conservative Swing Trader"
+                className="focus-ring"
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="persona-description">Description</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={generatePersonaDescription}
+                  disabled={!personaName.trim() || isGenerating}
+                  className="btn-hover-lift"
+                >
+                  {isGenerating ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-4 w-4 mr-2" />
+                  )}
+                  Generate
+                </Button>
+              </div>
+              <Textarea
+                id="persona-description"
+                value={personaDescription}
+                onChange={(e) => setPersonaDescription(e.target.value)}
+                placeholder="Describe the trading style, timeframes, risk tolerance, and analysis approach..."
+                className="min-h-[100px] focus-ring"
+              />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogMode(null)}>Cancel</Button>
-            <Button onClick={handleSave}>Save Persona</Button>
+            <Button variant="outline" onClick={() => setDialogMode(null)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSave} 
+              disabled={!personaName.trim() || !personaDescription.trim()}
+              className="btn-hover-lift"
+            >
+              {dialogMode === 'add' ? 'Create' : 'Save Changes'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-  );
 
-  const deleteDialog = (
-    <AlertDialog open={deleteAlertOpen} onOpenChange={setDeleteAlertOpen}>
-        <AlertDialogContent>
+      <AlertDialog open={deleteAlertOpen} onOpenChange={setDeleteAlertOpen}>
+        <AlertDialogContent className="glass-effect">
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogTitle>Delete Persona</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the custom persona "{currentPersona?.name}". This action cannot be undone.
+              Are you sure you want to delete "{currentPersona?.name}"? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteConfirm}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
+            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-  );
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      {personaDialog}
-      {deleteDialog}
-      <DialogContent className="sm:max-w-[625px]">
-        <DialogHeader>
-          <DialogTitle>Persona Management</DialogTitle>
-          <DialogDescription>
-            Manage your default and custom trading personas.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
-            {customPersonas.length > 0 ? (
-                customPersonas.map(p => (
-                    <div key={p.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
-                        <div>
-                            <p className="font-semibold">{p.name}</p>
-                            <p className="text-sm text-muted-foreground truncate max-w-md">{p.description}</p>
-                        </div>
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                    <MoreVertical className="h-4 w-4" />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent>
-                                <DropdownMenuItem onClick={() => handleEdit(p)}><Edit className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleDelete(p)} className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                    </div>
-                ))
-            ) : (
-                <div className="text-center text-muted-foreground py-8">
-                    You haven't created any custom personas yet.
-                </div>
-            )}
-        </div>
-        <DialogFooter className="flex-row justify-between w-full">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
-            <Button onClick={handleAddNew}><Plus className="mr-2 h-4 w-4" /> Add New Persona</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    </>
   );
 }
-
 
 interface ChatInputProps {
   personas: Persona[];
@@ -244,47 +266,31 @@ interface ChatInputProps {
   isLoading: boolean;
 }
 
+const defaultPersonas: Persona[] = [
+  { id: 'default', name: 'Default', description: 'A balanced, general technical analyst suitable for swing trading.', isCustom: false },
+  { id: 'scalper', name: 'Scalper', description: 'Focuses on very short timeframes (1-15 mins), micro-patterns, and quick profits with tight stop-losses.', isCustom: false },
+  { id: 'day_trader', name: 'Day Trader', description: 'Focuses on hourly and 4-hour charts for intraday trends. Trades are opened and closed within the same day.', isCustom: false },
+  { id: 'swing_trader', name: 'Swing Trader', description: 'Focuses on daily and weekly charts to identify multi-day or multi-week trends.', isCustom: false },
+  { id: 'position_trader', name: 'Position Trader', description: 'Focuses on weekly and monthly charts for long-term macroeconomic trends, ignoring short-term noise.', isCustom: false },
+];
+
 export function ChatInput({ personas, activePersonaId, onPersonaChange, onPersonasChange, onMessageSubmit, isLoading }: ChatInputProps) {
-  const { toast } = useToast();
   const [question, setQuestion] = useState('');
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [isListening, setIsListening] = useState(false);
-  const [personaManagerOpen, setPersonaManagerOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-
+  const [personaManagerOpen, setPersonaManagerOpen] = useState(false);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  
-  const activePersona = personas.find(p => p.id === activePersonaId);
+  const recognitionRef = useRef<any>(null);
+  const { toast } = useToast();
+
   const customPersonas = personas.filter(p => p.isCustom);
-  const defaultPersonas = personas.filter(p => !p.isCustom);
+  const activePersona = personas.find(p => p.id === activePersonaId);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.lang = 'en-US';
-
-      recognitionRef.current.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        setQuestion(transcript);
-        setIsListening(false);
-      };
-
-      recognitionRef.current.onerror = (event) => {
-        toast({ title: "Voice Recognition Error", description: event.error, variant: 'destructive' });
-        setIsListening(false);
-      };
-
-      recognitionRef.current.onend = () => {
-        setIsListening(false);
-      };
-    }
-  }, [toast]);
-  
+  // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -292,166 +298,240 @@ export function ChatInput({ personas, activePersonaId, onPersonaChange, onPerson
     }
   }, [question]);
 
-  const processFiles = (files: FileList | null) => {
-    if (files) {
-      const fileArray = Array.from(files);
-      const newFiles = [...imageFiles, ...fileArray].slice(0, 2);
-      setImageFiles(newFiles);
+  // Initialize speech recognition
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'webkitSpeechRecognition' in window) {
+      const recognition = new (window as any).webkitSpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+      
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setQuestion(prev => prev + ' ' + transcript);
+        setIsListening(false);
+      };
+      
+      recognition.onerror = () => {
+        setIsListening(false);
+        toast({ title: 'Speech Recognition Error', description: 'Could not recognize speech. Please try again.', variant: 'destructive' });
+      };
+      
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+      
+      recognitionRef.current = recognition;
+    }
+  }, [toast]);
 
-      const newPreviews: string[] = [];
-      newFiles.forEach(file => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          newPreviews.push(reader.result as string);
-          if (newPreviews.length === newFiles.length) {
-            setImagePreviews(newPreviews);
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    const validFiles = files.filter(file => file.type.startsWith('image/'));
+    if (validFiles.length !== files.length) {
+      toast({ title: 'Invalid Files', description: 'Please select only image files.', variant: 'destructive' });
+    }
+
+    const totalFiles = imageFiles.length + validFiles.length;
+    if (totalFiles > 2) {
+      toast({ title: 'Too Many Files', description: 'You can upload a maximum of 2 images.', variant: 'destructive' });
+      return;
+    }
+
+    const newPreviews: string[] = [];
+    validFiles.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (e.target?.result) {
+          newPreviews.push(e.target.result as string);
+          if (newPreviews.length === validFiles.length) {
+            setImagePreviews(prev => [...prev, ...newPreviews]);
           }
-        };
-        reader.readAsDataURL(file);
-      });
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+
+    setImageFiles(prev => [...prev, ...validFiles]);
+    if (e.target) e.target.value = '';
+  };
+
+  const removeImage = (index: number) => {
+    setImageFiles(prev => prev.filter((_, i) => i !== index));
+    setImagePreviews(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleToggleListening = () => {
+    if (!recognitionRef.current) return;
+    
+    if (isListening) {
+      recognitionRef.current.stop();
+    } else {
+      recognitionRef.current.start();
+      setIsListening(true);
     }
   };
 
-  const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    processFiles(event.target.files);
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if ((!question.trim() && imageFiles.length === 0) || isLoading) return;
+
+    const message: Message = {
+      id: nanoid(),
+      role: 'user',
+      content: question.trim() || 'Please analyze this chart.',
+      imageFiles: imageFiles.length > 0 ? imageFiles : undefined,
+      imagePreviews: imagePreviews.length > 0 ? imagePreviews : undefined,
+      personaDescription: activePersona?.description,
+    };
+
+    onMessageSubmit(message);
+    setQuestion('');
+    setImageFiles([]);
+    setImagePreviews([]);
   };
 
-  const handleDragEvents = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDragEvents = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
   };
 
-  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
-    handleDragEvents(e);
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     setIsDragging(true);
   };
 
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    handleDragEvents(e);
-    // Use a timeout to prevent flickering when dragging over child elements
-    setTimeout(() => {
-        setIsDragging(false);
-    }, 50);
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget === e.target) {
+      setIsDragging(false);
+    }
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    handleDragEvents(e);
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     setIsDragging(false);
-    processFiles(e.dataTransfer.files);
-  };
-
-  const handleToggleListening = () => {
-    if (isListening) {
-      recognitionRef.current?.stop();
-    } else {
-      recognitionRef.current?.start();
-    }
-    setIsListening(!isListening);
-  };
-
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if ((!question.trim() && imageFiles.length === 0) || isLoading) {
-      return;
-    }
-
-    const userMessageContent = question.trim() ? question : (imageFiles.length > 1 ? 'Analyze these two charts.' : 'Analyze this chart.');
     
-    const userMessage: Message = {
-      id: nanoid(),
-      role: 'user',
-      content: userMessageContent,
-      imageFiles,
-      imagePreviews: imageFiles.length > 0 ? imagePreviews : undefined,
-      personaDescription: activePersona?.description,
-    };
+    const files = Array.from(e.dataTransfer.files);
+    const imageFiles = files.filter(file => file.type.startsWith('image/'));
     
-    onMessageSubmit(userMessage);
-
-    setQuestion('');
-    setImageFiles([]);
-    setImagePreviews([]);
-    if(fileInputRef.current) fileInputRef.current.value = "";
+         if (imageFiles.length > 0) {
+       // Create a proper file input event
+       const fileList = new DataTransfer();
+       imageFiles.forEach(file => fileList.items.add(file));
+       
+       const mockEvent = {
+         target: { files: fileList.files, value: '' }
+       } as React.ChangeEvent<HTMLInputElement>;
+       handleImageChange(mockEvent);
+     }
   };
-
-  const removeImage = (index: number) => {
-    const newFiles = [...imageFiles];
-    newFiles.splice(index, 1);
-    setImageFiles(newFiles);
-
-    const newPreviews = [...imagePreviews];
-    newPreviews.splice(index, 1);
-    setImagePreviews(newPreviews);
-    
-    if(fileInputRef.current) fileInputRef.current.value = "";
-  }
 
   return (
     <>
-      <PersonaManager 
+      <PersonaManager
         personas={personas}
         onPersonasChange={onPersonasChange}
         open={personaManagerOpen}
         onOpenChange={setPersonaManagerOpen}
       />
-      <div 
-        className="rounded-2xl border bg-background/60 p-2 shadow-lg relative"
+      <div
+        className="relative w-full rounded-2xl border border-border/50 bg-gradient-to-br from-background/80 to-muted/20 shadow-lg backdrop-blur-sm transition-all duration-300 hover:shadow-xl focus-within:shadow-xl focus-within:border-primary/50 animate-fade-in"
         onDrop={handleDrop}
         onDragOver={handleDragEvents}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
       >
         {isDragging && (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/80 rounded-2xl border-2 border-dashed border-primary">
-                <Upload className="h-10 w-10 text-primary" />
-                <p className="mt-2 text-sm font-medium text-primary">Drop images here</p>
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/90 rounded-2xl border-2 border-dashed border-primary animate-scale-in">
+                <div className="p-4 rounded-full bg-primary/10 mb-4">
+                  <Upload className="h-10 w-10 text-primary" />
+                </div>
+                <p className="text-lg font-semibold text-primary mb-2">Drop images here</p>
+                <p className="text-sm text-muted-foreground">Upload up to 2 chart images</p>
             </div>
         )}
         <form onSubmit={handleSubmit} className={cn("relative", isDragging && 'pointer-events-none')}>
           {imagePreviews.length > 0 && (
-            <div className="p-2 flex gap-2 border-b mb-2">
+            <div className="p-4 flex gap-3 border-b border-border/50 bg-muted/20 rounded-t-2xl">
               {imagePreviews.map((preview, index) => (
-                <div key={index} className="relative w-24 h-16">
-                  <Image src={preview} alt={`Selected chart ${index + 1}`} layout="fill" objectFit="cover" className="rounded-md" data-ai-hint="chart graph" />
+                <div key={index} className="relative w-28 h-20 group">
+                  <Image 
+                    src={preview} 
+                    alt={`Selected chart ${index + 1}`} 
+                    fill
+                    className="rounded-xl object-cover shadow-md group-hover:shadow-lg transition-all duration-200 border border-border/30" 
+                    data-ai-hint="chart graph" 
+                  />
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-muted text-muted-foreground hover:bg-destructive hover:text-destructive-foreground"
+                    className="absolute -top-2 -right-2 h-7 w-7 rounded-full bg-destructive/90 text-destructive-foreground hover:bg-destructive shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200"
                     onClick={() => removeImage(index)}
                     disabled={isLoading}
                   >
                     <X className="h-4 w-4" />
                   </Button>
+                  <div className="absolute inset-0 rounded-xl bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
                 </div>
               ))}
             </div>
           )}
-          <div className="relative flex w-full items-end">
-            <div className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center">
+          <div className="relative flex w-full items-end p-4">
+            <div className="absolute left-6 top-1/2 -translate-y-1/2 flex items-center gap-1">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button type="button" size="icon" variant="ghost" className="text-muted-foreground hover:text-foreground">
+                  <Button 
+                    type="button" 
+                    size="icon" 
+                    variant="ghost" 
+                    className="text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all duration-200 btn-hover-lift"
+                    title="Select trading persona"
+                  >
                     <SlidersHorizontal className="h-5 w-5" />
                     <span className="sr-only">Persona Settings</span>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuLabel>Trading Persona</DropdownMenuLabel>
+                <DropdownMenuContent className="w-64 glass-effect">
+                  <DropdownMenuLabel className="flex items-center gap-2">
+                    <Bot className="h-4 w-4 text-primary" />
+                    Trading Persona
+                  </DropdownMenuLabel>
                   <DropdownMenuRadioGroup value={activePersonaId} onValueChange={onPersonaChange}>
                     {defaultPersonas.map(p => (
-                      <DropdownMenuRadioItem key={p.id} value={p.id}>{p.name}</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem key={p.id} value={p.id} className="hover:bg-accent/70">
+                        <div className="flex flex-col">
+                          <span className="font-medium">{p.name}</span>
+                          <span className="text-xs text-muted-foreground line-clamp-2">{p.description}</span>
+                        </div>
+                      </DropdownMenuRadioItem>
                     ))}
                   </DropdownMenuRadioGroup>
                   {customPersonas.length > 0 && <DropdownMenuSeparator />}
-                  {customPersonas.length > 0 && <DropdownMenuLabel>Custom Personas</DropdownMenuLabel>}
+                  {customPersonas.length > 0 && (
+                    <DropdownMenuLabel className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-primary" />
+                      Custom Personas
+                    </DropdownMenuLabel>
+                  )}
                   <DropdownMenuRadioGroup value={activePersonaId} onValueChange={onPersonaChange}>
                      {customPersonas.map(p => (
-                      <DropdownMenuRadioItem key={p.id} value={p.id}>{p.name}</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem key={p.id} value={p.id} className="hover:bg-accent/70">
+                        <div className="flex flex-col">
+                          <span className="font-medium">{p.name}</span>
+                          <span className="text-xs text-muted-foreground line-clamp-2">{p.description}</span>
+                        </div>
+                      </DropdownMenuRadioItem>
                     ))}
                   </DropdownMenuRadioGroup>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={() => setPersonaManagerOpen(true)}>
+                  <DropdownMenuItem onSelect={() => setPersonaManagerOpen(true)} className="hover:bg-accent/70">
                     <Plus className="mr-2 h-4 w-4" /> Manage Personas
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -463,7 +543,8 @@ export function ChatInput({ personas, activePersonaId, onPersonaChange, onPerson
                 variant="ghost"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isLoading || imageFiles.length >= 2}
-                className="text-muted-foreground hover:text-foreground"
+                className="text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all duration-200 btn-hover-lift"
+                title="Attach chart images"
               >
                 <Paperclip className="h-5 w-5" />
                 <span className="sr-only">Attach image</span>
@@ -488,23 +569,35 @@ export function ChatInput({ personas, activePersonaId, onPersonaChange, onPerson
                   handleSubmit(e as any);
                 }
               }}
-              className="pl-24 pr-24 min-h-[52px] max-h-48 flex-1 resize-none self-center border-none bg-transparent shadow-none focus-visible:ring-0"
+              className="pl-28 pr-28 min-h-[52px] max-h-48 flex-1 resize-none self-center border-none bg-transparent shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/60"
               rows={1}
               disabled={isLoading}
             />
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+            <div className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center gap-2">
               <Button
                   type="button"
                   size="icon"
                   variant={isListening ? 'destructive' : 'ghost'}
                   onClick={handleToggleListening}
                   disabled={!recognitionRef.current || isLoading}
-                  className="text-muted-foreground hover:text-foreground"
+                  className={cn(
+                    "transition-all duration-200 btn-hover-lift",
+                    isListening 
+                      ? "text-destructive-foreground animate-pulse" 
+                      : "text-muted-foreground hover:text-primary hover:bg-primary/10"
+                  )}
+                  title="Voice input"
                 >
                   <Mic className="h-5 w-5" />
                   <span className="sr-only">Ask by voice</span>
                 </Button>
-              <Button type="submit" size="icon" disabled={(!question.trim() && imageFiles.length === 0) || isLoading}>
+              <Button 
+                type="submit" 
+                size="icon" 
+                disabled={(!question.trim() && imageFiles.length === 0) || isLoading}
+                className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg hover:shadow-xl transition-all duration-200 btn-hover-lift glow-effect"
+                title="Send message"
+              >
                   {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
                   <span className="sr-only">Send message</span>
                 </Button>
