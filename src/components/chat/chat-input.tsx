@@ -40,7 +40,6 @@ import { useToast } from '@/hooks/use-toast';
 import type { Message, Persona } from '@/lib/types';
 import { nanoid } from 'nanoid';
 import { cn } from '@/lib/utils';
-import { textChat } from '@/ai/flows/text-chat-flow';
 
 interface PersonaManagerProps {
   personas: Persona[];

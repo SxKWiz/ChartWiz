@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo, memo } from 'react';
 import Image from 'next/image';
 import type { Message, Recommendation } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -25,7 +25,8 @@ interface ChatMessagesProps {
   onSoundToggle?: (enabled: boolean) => void;
 }
 
-const RecommendationCard = ({ recommendation }: { recommendation: Recommendation }) => (
+// Memoized recommendation card component
+const RecommendationCard = memo(({ recommendation }: { recommendation: Recommendation }) => (
   <TooltipProvider>
     <Card className="bg-background/30 border-border/50">
       <CardHeader className="pb-4 flex-row items-center justify-between">
@@ -48,158 +49,178 @@ const RecommendationCard = ({ recommendation }: { recommendation: Recommendation
         
         <div className="flex items-start gap-3">
           <div className="pt-0.5">
-            <CircleDot className="h-4 w-4 text-blue-400" />
+            <TrendingUp className="h-4 w-4 text-green-500" />
           </div>
-          <div>
-            <span className="font-medium">Entry Price: {recommendation.entryPrice.value}</span>
-            <p className="text-xs text-muted-foreground">{recommendation.entryPrice.reason}</p>
+          <div className="flex-1">
+            <div className="font-medium text-green-500 mb-1">Entry Price</div>
+            <div className="font-mono text-green-500">{recommendation.entryPrice.value}</div>
+            <div className="text-muted-foreground mt-1">{recommendation.entryPrice.reason}</div>
           </div>
         </div>
 
-        <div>
-          <div className="flex items-start gap-3 mb-2">
-             <div className="pt-0.5">
-              <TrendingUp className="h-4 w-4 text-green-400" />
-            </div>
-            <span className="font-medium">Take Profit Targets</span>
-          </div>
-          <div className="space-y-3 pl-7">
-            {recommendation.takeProfit.map((tp, index) => (
-              <div key={index} className="flex items-start gap-3">
-                <div className="pt-0.5">
-                   <div className="w-4 h-4 text-xs flex items-center justify-center rounded-full bg-green-400/20 text-green-500 font-bold">{index+1}</div>
-                </div>
-                <div>
-                   <span className="font-medium text-foreground">{tp.value}</span>
-                  <p className="text-xs text-muted-foreground">{tp.reason}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        
         <div className="flex items-start gap-3">
           <div className="pt-0.5">
-            <TrendingDown className="h-4 w-4 text-red-400" />
+            <TrendingUp className="h-4 w-4 text-blue-500" />
           </div>
-          <div>
-            <span className="font-medium">Stop Loss: {recommendation.stopLoss.value}</span>
-            <p className="text-xs text-muted-foreground">{recommendation.stopLoss.reason}</p>
+          <div className="flex-1">
+            <div className="font-medium text-blue-500 mb-2">Take Profit Targets</div>
+            <div className="space-y-2">
+              {recommendation.takeProfit.map((tp, index) => (
+                <div key={index} className="border-l-2 border-blue-500/30 pl-3">
+                  <div className="font-mono text-blue-500">Target {index + 1}: {tp.value}</div>
+                  <div className="text-muted-foreground text-xs mt-0.5">{tp.reason}</div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
+        <div className="flex items-start gap-3">
+          <div className="pt-0.5">
+            <TrendingDown className="h-4 w-4 text-red-500" />
+          </div>
+          <div className="flex-1">
+            <div className="font-medium text-red-500 mb-1">Stop Loss</div>
+            <div className="font-mono text-red-500">{recommendation.stopLoss.value}</div>
+            <div className="text-muted-foreground mt-1">{recommendation.stopLoss.reason}</div>
+          </div>
+        </div>
       </CardContent>
     </Card>
   </TooltipProvider>
-);
+));
 
-export function ChatMessages({ messages, isSoundEnabled, onSoundToggle }: ChatMessagesProps) {
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+RecommendationCard.displayName = 'RecommendationCard';
 
-  useEffect(() => {
-    if (scrollAreaRef.current) {
-      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
-    }
-  }, [messages]);
+// Memoized alternative scenario component
+const AlternativeScenario = memo(({ scenario }: { scenario: string }) => (
+  <Alert className="border-amber-500/50 bg-amber-500/5">
+    <AlertTriangle className="h-4 w-4 text-amber-500" />
+    <AlertTitle className="text-amber-500">Alternative Scenario</AlertTitle>
+    <AlertDescription className="text-amber-700 dark:text-amber-300">
+      {scenario}
+    </AlertDescription>
+  </Alert>
+));
 
-  useEffect(() => {
-    const lastMessage = messages[messages.length - 1];
-    if (
-      lastMessage?.role === 'assistant' &&
-      lastMessage.audioDataUri &&
-      lastMessage.isSoundEnabled &&
-      audioRef.current
-    ) {
-      audioRef.current.src = lastMessage.audioDataUri;
-      audioRef.current.play().catch(e => console.error("Audio playback failed:", e));
-    }
-  }, [messages]);
+AlternativeScenario.displayName = 'AlternativeScenario';
 
+// Memoized message component
+const MessageComponent = memo(({ message, index }: { message: Message; index: number }) => {
+  const isUser = message.role === 'user';
+  
   return (
-    <div ref={scrollAreaRef} className="h-full overflow-y-auto">
-      <div className="p-4 space-y-6 max-w-4xl mx-auto">
-        {messages.map((message, index) => (
-          <div
-            key={message.id}
-            className={cn(
-              'flex items-start gap-4',
-              message.role === 'user' ? 'justify-end' : 'justify-start'
-            )}
-          >
-            {message.role === 'assistant' && (
-              <Avatar className="h-8 w-8 bg-primary text-primary-foreground">
-                <AvatarFallback>
-                  <Bot />
-                </AvatarFallback>
-              </Avatar>
-            )}
-
-            <div className={cn(
-              'max-w-2xl rounded-2xl group relative',
-              message.role === 'user' ? 'bg-primary text-primary-foreground rounded-br-none' : 'bg-secondary text-secondary-foreground rounded-bl-none',
-              (message.content || !message.imagePreviews) && 'p-4'
-            )}>
-              <div className="space-y-4">
-                 {message.imagePreviews && (
-                  <div className={cn("flex flex-wrap gap-2", !message.content && "p-2")}>
-                    {message.imagePreviews.map((preview, idx) => (
-                       <div key={idx} className="relative w-36 h-auto">
-                        <Image
-                          src={preview}
-                          alt="Chart preview"
-                          width={144}
-                          height={90}
-                          className="rounded-lg object-cover"
-                          data-ai-hint="chart graph"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {message.content && typeof message.content === 'string' && <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>}
-                {message.recommendation && (
-                  <RecommendationCard recommendation={message.recommendation} />
-                )}
-                 {message.alternativeScenario && (
-                  <Alert>
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>Alternative Scenario</AlertTitle>
-                    <AlertDescription>
-                      {message.alternativeScenario}
-                    </AlertDescription>
-                  </Alert>
-                 )}
-                 {index === messages.length - 1 && onSoundToggle && message.role === 'assistant' && typeof message.content === 'string' && (
-                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onSoundToggle(!isSoundEnabled)}>
-                            {isSoundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {isSoundEnabled ? 'Disable audio response' : 'Enable audio response'}
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                )}
-              </div>
+    <div className={cn('flex gap-3 p-4', isUser ? 'justify-end' : 'justify-start')}>
+      {!isUser && (
+        <Avatar className="h-8 w-8 shrink-0">
+          <AvatarFallback className="bg-primary text-primary-foreground">
+            <Bot className="h-4 w-4" />
+          </AvatarFallback>
+        </Avatar>
+      )}
+      
+      <div className={cn('flex flex-col gap-2 max-w-[80%]', isUser ? 'items-end' : 'items-start')}>
+        <div
+          className={cn(
+            'rounded-lg px-4 py-2 text-sm',
+            isUser
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-muted text-muted-foreground'
+          )}
+        >
+          {typeof message.content === 'string' ? (
+            <div className="whitespace-pre-wrap">{message.content}</div>
+          ) : (
+            message.content
+          )}
+          
+          {message.imagePreviews && message.imagePreviews.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {message.imagePreviews.map((preview, idx) => (
+                <div key={idx} className="relative">
+                  <Image
+                    src={preview}
+                    alt={`Uploaded image ${idx + 1}`}
+                    width={200}
+                    height={200}
+                    className="rounded-md object-cover"
+                    loading="lazy"
+                    placeholder="blur"
+                    blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAhEAACAQMDBQAAAAAAAAAAAAABAgMABAUGIWGRkqGx0f/EABUBAQEAAAAAAAAAAAAAAAAAAAMF/8QAGhEAAgIDAAAAAAAAAAAAAAAAAAECEgMRkf/aAAwDAQACEQMRAD8AltJagyeH0AthI5xdrLcNM91BF5pX2HaH9bcfaSXWGaRmknyJckliyjqTzSlT54b6bk+h0R+Ss6EtJYXTtxvN0+F1KkjHm9N4xvFvnLcXNJHKwiRGhRCyRKQqjHCgYAx7jYRUQ4ixTHc7f+9XPJKUVV8HhqxvBgPxX9Hx+MtgwQhGCCGCgEYwR5BBGMg7g8gggjqDqEYZKqzZHJCGCgEYwR5BBGMg7g8gggjqDrqEYZKqzZHJCGCgEYwR5BBGMg7g8gggjqDrqEYZKqzZHJCGCgEYwR5BBGMg7g8gggjqDrqEYZ/9k="
+                  />
+                </div>
+              ))}
             </div>
-
-            {message.role === 'user' && (
-              <Avatar className="h-8 w-8">
-                <AvatarFallback>
-                  <User />
-                </AvatarFallback>
-              </Avatar>
-            )}
-          </div>
-        ))}
+          )}
+        </div>
+        
+        {!isUser && message.recommendation && (
+          <RecommendationCard recommendation={message.recommendation} />
+        )}
+        
+        {!isUser && message.alternativeScenario && (
+          <AlternativeScenario scenario={message.alternativeScenario} />
+        )}
       </div>
-      <audio ref={audioRef} />
+      
+      {isUser && (
+        <Avatar className="h-8 w-8 shrink-0">
+          <AvatarFallback className="bg-secondary text-secondary-foreground">
+            <User className="h-4 w-4" />
+          </AvatarFallback>
+        </Avatar>
+      )}
     </div>
   );
-}
+});
+
+MessageComponent.displayName = 'MessageComponent';
+
+export const ChatMessages = memo(({ messages, isSoundEnabled, onSoundToggle }: ChatMessagesProps) => {
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Memoize the messages to prevent unnecessary re-renders
+  const memoizedMessages = useMemo(() => messages, [messages]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  // Optimize rendering for large message lists
+  const messageElements = useMemo(() => 
+    memoizedMessages.map((message, index) => (
+      <MessageComponent key={message.id} message={message} index={index} />
+    )), 
+    [memoizedMessages]
+  );
+
+  if (!messages.length) {
+    return (
+      <div className="flex items-center justify-center h-full text-muted-foreground">
+        <div className="text-center">
+          <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
+          <p>No messages yet. Start a conversation!</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-4xl mx-auto">
+          {messageElements}
+          <div ref={messagesEndRef} />
+        </div>
+      </div>
+    </div>
+  );
+});
+
+ChatMessages.displayName = 'ChatMessages';
+
+export default ChatMessages;

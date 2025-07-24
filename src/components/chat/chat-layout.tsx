@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import {
   SidebarProvider,
   Sidebar,
@@ -17,15 +17,25 @@ import { Button } from '@/components/ui/button';
 import { Plus, MonitorPlay } from 'lucide-react';
 import { ChatHistory } from './chat-history';
 import { ChatMessages } from './chat-messages';
-import { ChatInput } from './chat-input';
-import type { ChatSession, Message, Persona } from '@/lib/types';
-import { nanoid } from 'nanoid';
-import { useSidebar } from '@/components/ui/sidebar';
 import Link from 'next/link';
 import { getSummaryTitleForHistory, getAiResponse } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import { Logo } from '@/components/icons/logo';
+import type { ChatSession, Message, Persona } from '@/lib/types';
+import { nanoid } from 'nanoid';
 
+// Lazy load the chat input component to reduce initial bundle size
+const ChatInput = lazy(() => import('./chat-input').then(module => ({ default: module.ChatInput })));
+
+// Loading component for lazy-loaded components
+const ComponentLoader = () => (
+  <div className="flex items-center justify-center p-4">
+    <div className="flex items-center space-x-2">
+      <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+      <span className="text-sm text-muted-foreground">Loading...</span>
+    </div>
+  </div>
+);
 
 const defaultPersonas: Persona[] = [
   { id: 'default', name: 'Default', description: 'A balanced, general technical analyst suitable for swing trading.', isCustom: false },
@@ -44,89 +54,151 @@ const initialSession: ChatSession = {
   personaId: 'default'
 };
 
+// Memoized session operations
+const useSessionOperations = () => {
+  return useMemo(() => ({
+    createNewSession: (): ChatSession => ({
+      id: nanoid(),
+      title: 'New Chat',
+      messages: [{ id: nanoid(), role: 'assistant', content: "Hello! I'm Wizz. Upload a crypto chart and I'll analyze it for you." }],
+      personaId: 'default',
+    }),
+    
+    updateSessionTitle: (sessions: ChatSession[], sessionId: string, newTitle: string): ChatSession[] =>
+      sessions.map(session => 
+        session.id === sessionId 
+          ? { ...session, title: newTitle.substring(0, 25) } 
+          : session
+      ),
+      
+    addMessageToSession: (sessions: ChatSession[], sessionId: string, message: Message): ChatSession[] =>
+      sessions.map(session =>
+        session.id === sessionId
+          ? { ...session, messages: [...session.messages, message] }
+          : session
+      ),
+  }), []);
+};
+
+// Memoized local storage operations
+const useLocalStorage = () => {
+  return useMemo(() => ({
+    loadSessions: (): ChatSession[] => {
+      try {
+        const saved = localStorage.getItem('chatSessions');
+        return saved ? JSON.parse(saved) : [];
+      } catch {
+        return [];
+      }
+    },
+    
+    saveSessions: (sessions: ChatSession[]) => {
+      try {
+        if (sessions.length > 0) {
+          localStorage.setItem('chatSessions', JSON.stringify(sessions));
+        } else {
+          localStorage.removeItem('chatSessions');
+        }
+      } catch (error) {
+        console.error('Failed to save sessions:', error);
+      }
+    },
+    
+    loadActiveSessionId: (): string | null => {
+      try {
+        return localStorage.getItem('activeSessionId');
+      } catch {
+        return null;
+      }
+    },
+    
+    saveActiveSessionId: (sessionId: string) => {
+      try {
+        localStorage.setItem('activeSessionId', sessionId);
+      } catch (error) {
+        console.error('Failed to save active session ID:', error);
+      }
+    },
+    
+    loadCustomPersonas: (): Persona[] => {
+      try {
+        const saved = localStorage.getItem('customPersonas');
+        return saved ? JSON.parse(saved) : [];
+      } catch {
+        return [];
+      }
+    },
+    
+    saveCustomPersonas: (personas: Persona[]) => {
+      try {
+        const customPersonas = personas.filter(p => p.isCustom);
+        localStorage.setItem('customPersonas', JSON.stringify(customPersonas));
+      } catch (error) {
+        console.error('Failed to save custom personas:', error);
+      }
+    },
+  }), []);
+};
+
 function ChatLayoutContent() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [personas, setPersonas] = useState<Persona[]>(defaultPersonas);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  
+  const sessionOps = useSessionOperations();
+  const localStorage = useLocalStorage();
+
+  // Memoized active session
+  const activeSession = useMemo(() => 
+    sessions.find((s) => s.id === activeSessionId), 
+    [sessions, activeSessionId]
+  );
 
   // Load data from local storage on mount
   useEffect(() => {
-    try {
-      const savedSessions = localStorage.getItem('chatSessions');
-      if (savedSessions) {
-        const parsedSessions = JSON.parse(savedSessions);
-        setSessions(parsedSessions);
-        if (parsedSessions.length > 0) {
-            setActiveSessionId(localStorage.getItem('activeSessionId') || parsedSessions[0].id);
-        } else {
-          const newSession = { ...initialSession, id: nanoid(), title: 'New Chat' };
-          setSessions([newSession]);
-          setActiveSessionId(newSession.id);
-        }
-      } else {
-        const newInitialSession = {...initialSession, id: nanoid()};
-        setSessions([newInitialSession]);
-        setActiveSessionId(newInitialSession.id);
-      }
-
-      const savedPersonas = localStorage.getItem('customPersonas');
-      if (savedPersonas) {
-        const customPersonas: Persona[] = JSON.parse(savedPersonas);
-        setPersonas([...defaultPersonas, ...customPersonas]);
-      }
-
-    } catch (error) {
-      console.error("Failed to load data from local storage:", error);
-      const newInitialSession = {...initialSession, id: nanoid()};
-      setSessions([newInitialSession]);
-      setActiveSessionId(newInitialSession.id);
-      setPersonas(defaultPersonas);
+    const savedSessions = localStorage.loadSessions();
+    const savedActiveId = localStorage.loadActiveSessionId();
+    const savedPersonas = localStorage.loadCustomPersonas();
+    
+    if (savedSessions.length > 0) {
+      setSessions(savedSessions);
+      setActiveSessionId(savedActiveId || savedSessions[0].id);
+    } else {
+      const newSession = { ...initialSession, id: nanoid(), title: 'New Chat' };
+      setSessions([newSession]);
+      setActiveSessionId(newSession.id);
     }
-  }, []);
+    
+    setPersonas([...defaultPersonas, ...savedPersonas]);
+  }, [localStorage]);
 
   // Save sessions to local storage whenever they change
   useEffect(() => {
-    if (sessions.length > 0) {
-      localStorage.setItem('chatSessions', JSON.stringify(sessions));
-    } else {
-      localStorage.removeItem('chatSessions');
-    }
-  }, [sessions]);
+    localStorage.saveSessions(sessions);
+  }, [sessions, localStorage]);
 
   // Save active session id to local storage
   useEffect(() => {
     if (activeSessionId) {
-        localStorage.setItem('activeSessionId', activeSessionId);
+      localStorage.saveActiveSessionId(activeSessionId);
     }
-  }, [activeSessionId]);
+  }, [activeSessionId, localStorage]);
 
   // Save custom personas to local storage
   useEffect(() => {
-      const customPersonas = personas.filter(p => p.isCustom);
-      localStorage.setItem('customPersonas', JSON.stringify(customPersonas));
-  }, [personas]);
-
-
-  const activeSession = sessions.find((s) => s.id === activeSessionId);
+    localStorage.saveCustomPersonas(personas);
+  }, [personas, localStorage]);
 
   const addMessageToSession = useCallback((sessionId: string, message: Message) => {
-    setSessions(prevSessions => {
-      const newSessions = prevSessions.map(session => {
-        if (session.id === sessionId) {
-          return { ...session, messages: [...session.messages, message] };
-        }
-        return session;
-      });
-      return newSessions;
-    });
-  }, []);
+    setSessions(prevSessions => sessionOps.addMessageToSession(prevSessions, sessionId, message));
+  }, [sessionOps]);
   
-  const handleMessageSubmit = (message: Message) => {
+  const handleMessageSubmit = useCallback((message: Message) => {
     if (!activeSessionId) return;
     addMessageToSession(activeSessionId, message);
-  };
+  }, [activeSessionId, addMessageToSession]);
 
   // This effect triggers the AI response and title generation
   useEffect(() => {
@@ -143,10 +215,12 @@ function ChatLayoutContent() {
 
       const titleNeedsUpdate = activeSession.title === 'New Chat';
       if (titleNeedsUpdate && messagesForApi.length > 1) {
-        const newTitle = await getSummaryTitleForHistory(messagesForApi);
-        setSessions(prev => 
-          prev.map(s => s.id === activeSession.id ? { ...s, title: newTitle.substring(0, 25) } : s)
-        );
+        try {
+          const newTitle = await getSummaryTitleForHistory(messagesForApi);
+          setSessions(prev => sessionOps.updateSessionTitle(prev, activeSession.id, newTitle));
+        } catch (error) {
+          console.error('Failed to generate title:', error);
+        }
       }
       
       const formData = new FormData();
@@ -162,25 +236,30 @@ function ChatLayoutContent() {
           });
       }
       
-      const result = await getAiResponse(formData);
+      try {
+        const result = await getAiResponse(formData);
 
-      if (result.error) {
-        toast({ title: 'AI Analysis Error', description: result.error, variant: 'destructive' });
-        const errorMessage: Message = {
-          id: nanoid(),
-          role: 'assistant',
-          content: `Sorry, there was an error: ${result.error}`,
-        };
-        addMessageToSession(activeSession.id, errorMessage);
-      } else if (result.answer) {
-        const assistantMessage: Message = {
-          id: nanoid(),
-          role: 'assistant',
-          content: result.answer.analysis,
-          recommendation: result.answer.recommendation,
-          alternativeScenario: result.answer.alternativeScenario,
-        };
-        addMessageToSession(activeSession.id, assistantMessage);
+        if (result.error) {
+          toast({ title: 'AI Analysis Error', description: result.error, variant: 'destructive' });
+          const errorMessage: Message = {
+            id: nanoid(),
+            role: 'assistant',
+            content: `Sorry, there was an error: ${result.error}`,
+          };
+          addMessageToSession(activeSession.id, errorMessage);
+        } else if (result.answer) {
+          const assistantMessage: Message = {
+            id: nanoid(),
+            role: 'assistant',
+            content: result.answer.analysis,
+            recommendation: result.answer.recommendation,
+            alternativeScenario: result.answer.alternativeScenario,
+          };
+          addMessageToSession(activeSession.id, assistantMessage);
+        }
+      } catch (error) {
+        console.error('Failed to get AI response:', error);
+        toast({ title: 'AI Analysis Error', description: 'Failed to get AI response', variant: 'destructive' });
       }
       
       setIsLoading(false);
@@ -191,35 +270,22 @@ function ChatLayoutContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSession?.messages.filter(m => m.role === 'user').length, activeSession?.id]);
 
-
-  const createNewChat = () => {
-    const newSession: ChatSession = {
-      id: nanoid(),
-      title: 'New Chat',
-      messages: [{ id: nanoid(), role: 'assistant', content: "Hello! I'm Wizz. Upload a crypto chart and I'll analyze it for you." }],
-      personaId: 'default',
-    };
+  const createNewChat = useCallback(() => {
+    const newSession = sessionOps.createNewSession();
     setSessions((prev) => [newSession, ...prev]);
     setActiveSessionId(newSession.id);
-  };
+  }, [sessionOps]);
 
-  const renameSession = (id: string, newTitle: string) => {
-    setSessions(prev => 
-      prev.map(session => session.id === id ? { ...session, title: newTitle.substring(0, 25) } : session)
-    );
-  };
+  const renameSession = useCallback((id: string, newTitle: string) => {
+    setSessions(prev => sessionOps.updateSessionTitle(prev, id, newTitle));
+  }, [sessionOps]);
 
-  const deleteSession = (id: string) => {
+  const deleteSession = useCallback((id: string) => {
     setSessions(prevSessions => {
       const newSessions = prevSessions.filter(session => session.id !== id);
       
       if (newSessions.length === 0) {
-        const newSession: ChatSession = {
-          id: nanoid(),
-          title: 'New Chat',
-          messages: [{ id: nanoid(), role: 'assistant', content: "Hello! I'm Wizz. Upload a crypto chart and I'll analyze it for you." }],
-          personaId: 'default',
-        };
+        const newSession = sessionOps.createNewSession();
         setActiveSessionId(newSession.id);
         return [newSession];
       }
@@ -230,21 +296,21 @@ function ChatLayoutContent() {
       
       return newSessions;
     });
-  };
+  }, [activeSessionId, sessionOps]);
 
-  const setSessionPersonaId = (personaId: string) => {
+  const setSessionPersonaId = useCallback((personaId: string) => {
     if (!activeSessionId) return;
     setSessions(prev => 
       prev.map(session => session.id === activeSessionId ? { ...session, personaId: personaId } : session)
     );
-  };
+  }, [activeSessionId]);
 
-  const handlePersonasChange = (newPersonas: Persona[]) => {
+  const handlePersonasChange = useCallback((newPersonas: Persona[]) => {
     setPersonas(newPersonas);
     if (activeSession && !newPersonas.find(p => p.id === activeSession.personaId)) {
         setSessionPersonaId('default');
     }
-  }
+  }, [activeSession, setSessionPersonaId]);
 
   return (
     <>
@@ -306,14 +372,16 @@ function ChatLayoutContent() {
         <div className="p-4 border-t bg-transparent">
           <div className="max-w-4xl mx-auto">
              {activeSession && (
-                <ChatInput 
-                  personas={personas}
-                  activePersonaId={activeSession.personaId}
-                  onPersonaChange={setSessionPersonaId}
-                  onPersonasChange={handlePersonasChange}
-                  onMessageSubmit={handleMessageSubmit}
-                  isLoading={isLoading}
-                />
+                <Suspense fallback={<ComponentLoader />}>
+                  <ChatInput 
+                    personas={personas}
+                    activePersonaId={activeSession.personaId}
+                    onPersonaChange={setSessionPersonaId}
+                    onPersonasChange={handlePersonasChange}
+                    onMessageSubmit={handleMessageSubmit}
+                    isLoading={isLoading}
+                  />
+                </Suspense>
             )}
           </div>
         </div>
@@ -322,11 +390,10 @@ function ChatLayoutContent() {
   );
 }
 
-
-export function ChatLayout() {
+export const ChatLayout = React.memo(() => {
   return (
     <SidebarProvider>
       <ChatLayoutContent />
     </SidebarProvider>
-  )
-}
+  );
+});
