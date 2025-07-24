@@ -36,4 +36,5 @@ export interface ChatSession {
   title: string;
   messages: Message[];
   personaId: string;
+  timestamp: number;
 }
