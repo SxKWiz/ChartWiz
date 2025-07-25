@@ -22,7 +22,7 @@ type GetAiResponseOutput = {
 
 export async function getEnhancedAiResponse(formData: FormData): Promise<{ answer?: GetAiResponseOutput; error?: string }> {
   try {
-    const question = formData.get('question') as string;
+    let question = formData.get('question') as string;
     const personaDescription = formData.get('persona') as string || '';
     const riskTolerance = (formData.get('riskTolerance') as 'conservative' | 'moderate' | 'aggressive') || 'moderate';
     const marketDataText = formData.get('marketData') as string || '';
