@@ -82,8 +82,13 @@ export function ChatHistory({
     }
   };
 
-  // Format relative time using actual timestamp
+  // Format relative time using actual timestamp with consistent UTC formatting
   const formatRelativeTime = (timestamp: number) => {
+    // For initial/placeholder sessions (timestamp = 0), show a placeholder
+    if (timestamp === 0) {
+      return 'Now';
+    }
+    
     const now = Date.now();
     const diff = now - timestamp;
     
@@ -101,9 +106,10 @@ export function ChatHistory({
     if (weeks < 4) return `${weeks}w ago`;
     if (months < 12) return `${months}mo ago`;
     
-    // For older chats, show the actual date
+    // For older chats, show the actual date in a consistent format
     const date = new Date(timestamp);
-    return date.toLocaleDateString();
+    // Use a consistent format that doesn't depend on locale
+    return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
   };
 
   return (

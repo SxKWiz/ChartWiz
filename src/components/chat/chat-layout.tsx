@@ -219,93 +219,6 @@ function ChatLayoutContent() {
     localStorage.saveCustomPersonas(personas);
   }, [personas, localStorage, isMounted]);
 
-  // Show initial state during SSR and before hydration
-  if (!isMounted) {
-    const initialSession = createInitialSession();
-    return (
-      <>
-        <Sidebar collapsible="icon" className="glass-effect border-r border-border/50">
-          <SidebarHeader className="border-b border-border/50">
-             <div className="flex items-center justify-between p-3">
-                  <SidebarMenu>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton className="!h-14 !p-4 !bg-transparent hover:!bg-sidebar-accent/70 transition-all duration-200 group" asChild>
-                        <div className="flex items-center gap-3">
-                           <div className="relative">
-                             <Logo />
-                             <div className="absolute -inset-1 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full opacity-0 group-hover:opacity-20 transition-opacity duration-200"></div>
-                           </div>
-                           <span className="group-data-[collapsible=icon]:hidden font-bold text-lg gradient-text">Wizz</span>
-                        </div>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  </SidebarMenu>
-                   <div className="group-data-[collapsible=icon]:hidden">
-                      <SidebarTrigger className="hover:bg-sidebar-accent/70 transition-colors duration-200" />
-                   </div>
-             </div>
-          </SidebarHeader>
-          <SidebarContent className="p-3">
-             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold group-data-[collapsible=icon]:hidden text-sidebar-foreground/90">Chat History</h2>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                disabled
-                className="group-data-[collapsible=icon]:hidden btn-hover-lift hover:bg-sidebar-accent/70 hover:glow-effect transition-all duration-200"
-                title="Start new chat"
-              >
-                <Plus className="h-5 w-5" />
-                <span className="sr-only">New Chat</span>
-              </Button>
-            </div>
-            <ChatHistory
-              sessions={[initialSession]}
-              activeSessionId={initialSession.id}
-              setActiveSessionId={() => {}}
-              renameSession={() => {}}
-              deleteSession={() => {}}
-            />
-          </SidebarContent>
-          <SidebarHeader className="border-t border-border/50 p-3">
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <Link href="/share">
-                  <SidebarMenuButton className="btn-hover-lift hover:bg-sidebar-accent/70 transition-all duration-200 group">
-                    <div className="flex items-center gap-3">
-                      <div className="relative">
-                        <MonitorPlay className="h-5 w-5" />
-                        <Zap className="h-3 w-3 absolute -top-1 -right-1 text-yellow-400 animate-pulse" />
-                      </div>
-                      <span className="font-medium">Live Analysis</span>
-                    </div>
-                  </SidebarMenuButton>
-                </Link>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarHeader>
-        </Sidebar>
-        <SidebarInset className="flex flex-col h-screen">
-          <header className="flex items-center p-4 border-b border-border/50 glass-effect backdrop-blur-sm">
-            <SidebarTrigger className="hover:bg-accent/70 transition-colors duration-200"/>
-            <div className="flex items-center gap-3 ml-4">
-              <Sparkles className="h-5 w-5 text-primary animate-pulse-slow" />
-              <h1 className="text-xl font-bold gradient-text">{initialSession.title}</h1>
-            </div>
-          </header>
-          <div className="flex-1 overflow-y-auto animate-fade-in">
-            <ChatMessages messages={initialSession.messages} />
-          </div>
-          <div className="p-4 border-t border-border/50 glass-effect backdrop-blur-sm">
-            <div className="max-w-4xl mx-auto">
-              <ComponentLoader />
-            </div>
-          </div>
-        </SidebarInset>
-      </>
-    );
-  }
-
   const addMessageToSession = useCallback((sessionId: string, message: Message) => {
     setSessions(prevSessions => sessionOps.addMessageToSession(prevSessions, sessionId, message));
   }, [sessionOps]);
@@ -427,6 +340,11 @@ function ChatLayoutContent() {
     }
   }, [activeSession, setSessionPersonaId]);
 
+  // Use initial session data when not mounted, actual data when mounted
+  const displaySessions = isMounted ? sessions : [createInitialSession()];
+  const displayActiveSessionId = isMounted ? activeSessionId : 'initial-session';
+  const displayActiveSession = isMounted ? activeSession : createInitialSession();
+
   return (
     <>
       <Sidebar collapsible="icon" className="glass-effect border-r border-border/50">
@@ -456,7 +374,8 @@ function ChatLayoutContent() {
             <Button 
               variant="ghost" 
               size="icon" 
-              onClick={createNewChat} 
+              onClick={isMounted ? createNewChat : undefined}
+              disabled={!isMounted}
               className="group-data-[collapsible=icon]:hidden btn-hover-lift hover:bg-sidebar-accent/70 hover:glow-effect transition-all duration-200"
               title="Start new chat"
             >
@@ -465,11 +384,11 @@ function ChatLayoutContent() {
             </Button>
           </div>
           <ChatHistory
-            sessions={sessions}
-            activeSessionId={activeSessionId}
-            setActiveSessionId={setActiveSessionId}
-            renameSession={renameSession}
-            deleteSession={deleteSession}
+            sessions={displaySessions}
+            activeSessionId={displayActiveSessionId}
+            setActiveSessionId={isMounted ? setActiveSessionId : () => {}}
+            renameSession={isMounted ? renameSession : () => {}}
+            deleteSession={isMounted ? deleteSession : () => {}}
           />
         </SidebarContent>
         <SidebarHeader className="border-t border-border/50 p-3">
@@ -495,25 +414,27 @@ function ChatLayoutContent() {
           <SidebarTrigger className="hover:bg-accent/70 transition-colors duration-200"/>
           <div className="flex items-center gap-3 ml-4">
             <Sparkles className="h-5 w-5 text-primary animate-pulse-slow" />
-            <h1 className="text-xl font-bold gradient-text">{activeSession?.title || 'Wizz'}</h1>
+            <h1 className="text-xl font-bold gradient-text">{displayActiveSession?.title || 'Wizz'}</h1>
           </div>
         </header>
         <div className="flex-1 overflow-y-auto animate-fade-in">
-          <ChatMessages messages={activeSession?.messages || []} />
+          <ChatMessages messages={displayActiveSession?.messages || []} />
         </div>
         <div className="p-4 border-t border-border/50 glass-effect backdrop-blur-sm">
           <div className="max-w-4xl mx-auto">
-             {activeSession && (
+             {isMounted && displayActiveSession ? (
                 <Suspense fallback={<ComponentLoader />}>
                   <ChatInput 
                     personas={personas}
-                    activePersonaId={activeSession.personaId}
+                    activePersonaId={displayActiveSession.personaId}
                     onPersonaChange={setSessionPersonaId}
                     onPersonasChange={handlePersonasChange}
                     onMessageSubmit={handleMessageSubmit}
                     isLoading={isLoading}
                   />
                 </Suspense>
+            ) : (
+              <ComponentLoader />
             )}
           </div>
         </div>
