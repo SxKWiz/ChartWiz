@@ -11,6 +11,7 @@ import { validateAndEnhanceRecommendation, type RawRecommendation } from '../../
 import { generateAnalysisContext } from '../../lib/chart-analysis-helpers';
 import { optimizeTradeEntry, type EntryOptimizationInput, type OptimizationResult } from '../../lib/precision-entry-optimizer';
 import { getOptimizedTradingSetup, type TimeframeDetection, type PersonaOptimization } from '../../lib/timeframe-persona-detector';
+import { canProceedWithAnalysis, type ConfirmationRequest, type TimeframeConfirmation } from '../../lib/multi-timeframe-confirmation';
 
 const EnhancedMarketAnalysisInputSchema = z.object({
   primaryChartUri: z
@@ -300,6 +301,95 @@ const enhancedMarketAnalysisFlow = ai.defineFlow(
       input.tradingPersona
     );
     
+    // Check if higher timeframe confirmation is needed
+    const confirmationCheck = canProceedWithAnalysis(
+      tradingSetup.timeframeDetection.detectedTimeframe,
+      {
+        signalStrength: 65, // Mock signal strength - would be calculated from actual analysis
+        marketConditions: {
+          volatility: 'medium' as const,
+          trend: 'weak' as const,
+          volume: 'normal' as const
+        },
+        tradingStyle: tradingSetup.finalPersona,
+        conflictingSignals: [] // Would be populated from actual analysis
+      }
+      // Note: existingConfirmations would come from additional chart inputs in real implementation
+    );
+    
+    // If higher timeframe confirmation is required, return refusal message
+    if (!confirmationCheck.canProceed && confirmationCheck.confirmationRequest) {
+      console.log('🚫 Higher timeframe confirmation required:', {
+        currentTimeframe: tradingSetup.timeframeDetection.detectedTimeframe,
+        requiredTimeframes: confirmationCheck.confirmationRequest.requiredTimeframes.map(tf => tf.timeframe),
+        reasoning: confirmationCheck.confirmationRequest.reasoning
+      });
+      
+      // Return the refusal message instead of analysis
+      return {
+        analysis: {
+          marketStructure: {
+            trend: 'CONFIRMATION_REQUIRED',
+            phase: 'Awaiting higher timeframe analysis',
+            strength: 0,
+            keyLevels: []
+          },
+          technicalIndicators: {
+            rsi: { value: 0, signal: 'neutral', reasoning: 'Higher timeframe confirmation required' },
+            macd: { signal: 'neutral', reasoning: 'Higher timeframe confirmation required' },
+            bollingerBands: { position: 'neutral', reasoning: 'Higher timeframe confirmation required' },
+            volumeProfile: { signal: 'neutral', reasoning: 'Higher timeframe confirmation required' }
+          },
+          patternRecognition: {
+            primaryPattern: 'CONFIRMATION_REQUIRED',
+            confidence: 0,
+            completion: 0,
+            implications: ['Higher timeframe confirmation needed']
+          },
+          sentimentAnalysis: {
+            overall: 'neutral',
+            newsImpact: 'low',
+            socialSentiment: 'neutral',
+            onChainSignals: 'neutral'
+          },
+          riskAssessment: {
+            riskLevel: 'HIGH',
+            volatilityForecast: 'UNKNOWN',
+            liquidityAnalysis: 'Insufficient data',
+            correlationRisks: []
+          }
+        },
+        recommendation: {
+          action: 'WAIT_FOR_CONFIRMATION',
+          direction: 'none',
+          confidence: 0,
+          entryPrice: { value: '', reason: confirmationCheck.confirmationRequest.refusalMessage },
+          stopLoss: { value: '', reason: 'No recommendation until confirmation' },
+          takeProfit: [],
+          riskRewardRatio: '',
+          positionSize: '',
+          timeHorizon: '',
+                     specialInstructions: [
+             '🚫 **HIGHER TIMEFRAME CONFIRMATION REQUIRED**',
+             confirmationCheck.confirmationRequest.refusalMessage
+           ]
+        },
+        tradingPlan: {
+          entryStrategy: 'Wait for higher timeframe confirmation',
+          exitStrategy: 'N/A',
+          riskManagement: 'N/A',
+          contingencyPlans: ['Upload required higher timeframe charts'],
+          marketScenarios: []
+        },
+                 keyInsights: [
+           '🚫 Trade recommendation suspended pending higher timeframe analysis',
+           `📊 Required: ${confirmationCheck.confirmationRequest.requiredTimeframes.map(tf => tf.timeframe).join(', ')} chart analysis`,
+           '🎯 This ensures higher probability setups and prevents false signals'
+         ],
+        disclaimer: 'Analysis incomplete - higher timeframe confirmation required for trade recommendation.'
+      };
+    }
+    
     // Use auto-detected persona if not manually specified
     const optimizedInput = {
       ...input,
@@ -312,7 +402,8 @@ const enhancedMarketAnalysisFlow = ai.defineFlow(
       finalPersona: tradingSetup.finalPersona,
       confidence: `${tradingSetup.timeframeDetection.confidence}%`,
       reasoning: tradingSetup.setupReasoning,
-      personaConfig: tradingSetup.personaConfig
+      personaConfig: tradingSetup.personaConfig,
+      proceedWithAnalysis: confirmationCheck.canProceed
     });
     
     const {output} = await enhancedMarketAnalysisPrompt(optimizedInput);
