@@ -651,9 +651,12 @@ const SidebarMenuSkeleton = React.forwardRef<
     showIcon?: boolean
   }
 >(({ className, showIcon = false, ...props }, ref) => {
-  // Random width between 50 to 90%.
-  const width = React.useMemo(() => {
-    return `${Math.floor(Math.random() * 40) + 50}%`
+  // Use CSS animation for varying width instead of Math.random()
+  const [width, setWidth] = React.useState("70%") // Default stable width for SSR
+  
+  React.useEffect(() => {
+    // Only set random width on client-side after hydration
+    setWidth(`${Math.floor(Math.random() * 40) + 50}%`)
   }, [])
 
   return (

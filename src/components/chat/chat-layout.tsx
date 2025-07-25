@@ -48,15 +48,16 @@ const defaultPersonas: Persona[] = [
   { id: 'position_trader', name: 'Position Trader', description: 'Focuses on weekly and monthly charts for long-term macroeconomic trends, ignoring short-term noise.', isCustom: false },
 ];
 
-const initialSession: ChatSession = {
-  id: '1',
+// Create a stable initial session without dynamic values
+const createInitialSession = (): ChatSession => ({
+  id: 'initial-session',
   title: 'BTC/USD Analysis',
   messages: [
-    { id: nanoid(), role: 'assistant', content: "Hello! I'm ChartWiz. Upload a crypto chart and I'll analyze it for you." },
+    { id: 'initial-message', role: 'assistant', content: "Hello! I'm ChartWiz. Upload a crypto chart and I'll analyze it for you." },
   ],
   personaId: 'default',
-  timestamp: Date.now()
-};
+  timestamp: 0 // Will be set after hydration
+});
 
 // Memoized session operations
 const useSessionOperations = () => {
@@ -89,6 +90,7 @@ const useSessionOperations = () => {
 const useLocalStorage = () => {
   return useMemo(() => ({
     loadSessions: (): ChatSession[] => {
+      if (typeof window === 'undefined') return [];
       try {
         const saved = localStorage.getItem('chatSessions');
         if (!saved) return [];
@@ -105,6 +107,7 @@ const useLocalStorage = () => {
     },
     
     saveSessions: (sessions: ChatSession[]) => {
+      if (typeof window === 'undefined') return;
       try {
         if (sessions.length > 0) {
           localStorage.setItem('chatSessions', JSON.stringify(sessions));
@@ -117,6 +120,7 @@ const useLocalStorage = () => {
     },
     
     loadActiveSessionId: (): string | null => {
+      if (typeof window === 'undefined') return null;
       try {
         return localStorage.getItem('activeSessionId');
       } catch {
@@ -125,6 +129,7 @@ const useLocalStorage = () => {
     },
     
     saveActiveSessionId: (sessionId: string) => {
+      if (typeof window === 'undefined') return;
       try {
         localStorage.setItem('activeSessionId', sessionId);
       } catch (error) {
@@ -133,6 +138,7 @@ const useLocalStorage = () => {
     },
     
     loadCustomPersonas: (): Persona[] => {
+      if (typeof window === 'undefined') return [];
       try {
         const saved = localStorage.getItem('customPersonas');
         return saved ? JSON.parse(saved) : [];
@@ -142,6 +148,7 @@ const useLocalStorage = () => {
     },
     
     saveCustomPersonas: (personas: Persona[]) => {
+      if (typeof window === 'undefined') return;
       try {
         const customPersonas = personas.filter(p => p.isCustom);
         localStorage.setItem('customPersonas', JSON.stringify(customPersonas));
@@ -157,6 +164,7 @@ function ChatLayoutContent() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [personas, setPersonas] = useState<Persona[]>(defaultPersonas);
   const [isLoading, setIsLoading] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
   const { toast } = useToast();
   
   const sessionOps = useSessionOperations();
@@ -168,8 +176,15 @@ function ChatLayoutContent() {
     [sessions, activeSessionId]
   );
 
-  // Load data from local storage on mount
+  // Set mounted flag after hydration
   useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  // Load data from local storage only after component is mounted (client-side)
+  useEffect(() => {
+    if (!isMounted) return;
+    
     const savedSessions = localStorage.loadSessions();
     const savedActiveId = localStorage.loadActiveSessionId();
     const savedPersonas = localStorage.loadCustomPersonas();
@@ -178,30 +193,118 @@ function ChatLayoutContent() {
       setSessions(savedSessions);
       setActiveSessionId(savedActiveId || savedSessions[0].id);
     } else {
-      const newSession = { ...initialSession, id: nanoid(), title: 'New Chat', timestamp: Date.now() };
+      const newSession = sessionOps.createNewSession();
       setSessions([newSession]);
       setActiveSessionId(newSession.id);
     }
     
     setPersonas([...defaultPersonas, ...savedPersonas]);
-  }, [localStorage]);
+  }, [isMounted, localStorage, sessionOps]);
 
-  // Save sessions to local storage whenever they change
+  // Save sessions to local storage whenever they change (only after mounted)
   useEffect(() => {
+    if (!isMounted) return;
     localStorage.saveSessions(sessions);
-  }, [sessions, localStorage]);
+  }, [sessions, localStorage, isMounted]);
 
-  // Save active session id to local storage
+  // Save active session id to local storage (only after mounted)
   useEffect(() => {
-    if (activeSessionId) {
-      localStorage.saveActiveSessionId(activeSessionId);
-    }
-  }, [activeSessionId, localStorage]);
+    if (!isMounted || !activeSessionId) return;
+    localStorage.saveActiveSessionId(activeSessionId);
+  }, [activeSessionId, localStorage, isMounted]);
 
-  // Save custom personas to local storage
+  // Save custom personas to local storage (only after mounted)
   useEffect(() => {
+    if (!isMounted) return;
     localStorage.saveCustomPersonas(personas);
-  }, [personas, localStorage]);
+  }, [personas, localStorage, isMounted]);
+
+  // Show initial state during SSR and before hydration
+  if (!isMounted) {
+    const initialSession = createInitialSession();
+    return (
+      <>
+        <Sidebar collapsible="icon" className="glass-effect border-r border-border/50">
+          <SidebarHeader className="border-b border-border/50">
+             <div className="flex items-center justify-between p-3">
+                  <SidebarMenu>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton className="!h-14 !p-4 !bg-transparent hover:!bg-sidebar-accent/70 transition-all duration-200 group" asChild>
+                        <div className="flex items-center gap-3">
+                           <div className="relative">
+                             <Logo />
+                             <div className="absolute -inset-1 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full opacity-0 group-hover:opacity-20 transition-opacity duration-200"></div>
+                           </div>
+                           <span className="group-data-[collapsible=icon]:hidden font-bold text-lg gradient-text">Wizz</span>
+                        </div>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </SidebarMenu>
+                   <div className="group-data-[collapsible=icon]:hidden">
+                      <SidebarTrigger className="hover:bg-sidebar-accent/70 transition-colors duration-200" />
+                   </div>
+             </div>
+          </SidebarHeader>
+          <SidebarContent className="p-3">
+             <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-semibold group-data-[collapsible=icon]:hidden text-sidebar-foreground/90">Chat History</h2>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                disabled
+                className="group-data-[collapsible=icon]:hidden btn-hover-lift hover:bg-sidebar-accent/70 hover:glow-effect transition-all duration-200"
+                title="Start new chat"
+              >
+                <Plus className="h-5 w-5" />
+                <span className="sr-only">New Chat</span>
+              </Button>
+            </div>
+            <ChatHistory
+              sessions={[initialSession]}
+              activeSessionId={initialSession.id}
+              setActiveSessionId={() => {}}
+              renameSession={() => {}}
+              deleteSession={() => {}}
+            />
+          </SidebarContent>
+          <SidebarHeader className="border-t border-border/50 p-3">
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <Link href="/share">
+                  <SidebarMenuButton className="btn-hover-lift hover:bg-sidebar-accent/70 transition-all duration-200 group">
+                    <div className="flex items-center gap-3">
+                      <div className="relative">
+                        <MonitorPlay className="h-5 w-5" />
+                        <Zap className="h-3 w-3 absolute -top-1 -right-1 text-yellow-400 animate-pulse" />
+                      </div>
+                      <span className="font-medium">Live Analysis</span>
+                    </div>
+                  </SidebarMenuButton>
+                </Link>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarHeader>
+        </Sidebar>
+        <SidebarInset className="flex flex-col h-screen">
+          <header className="flex items-center p-4 border-b border-border/50 glass-effect backdrop-blur-sm">
+            <SidebarTrigger className="hover:bg-accent/70 transition-colors duration-200"/>
+            <div className="flex items-center gap-3 ml-4">
+              <Sparkles className="h-5 w-5 text-primary animate-pulse-slow" />
+              <h1 className="text-xl font-bold gradient-text">{initialSession.title}</h1>
+            </div>
+          </header>
+          <div className="flex-1 overflow-y-auto animate-fade-in">
+            <ChatMessages messages={initialSession.messages} />
+          </div>
+          <div className="p-4 border-t border-border/50 glass-effect backdrop-blur-sm">
+            <div className="max-w-4xl mx-auto">
+              <ComponentLoader />
+            </div>
+          </div>
+        </SidebarInset>
+      </>
+    );
+  }
 
   const addMessageToSession = useCallback((sessionId: string, message: Message) => {
     setSessions(prevSessions => sessionOps.addMessageToSession(prevSessions, sessionId, message));
@@ -214,7 +317,7 @@ function ChatLayoutContent() {
 
   // This effect triggers the AI response and title generation
   useEffect(() => {
-    if (!activeSession || isLoading) return;
+    if (!activeSession || isLoading || !isMounted) return;
 
     const lastMessage = activeSession.messages[activeSession.messages.length - 1];
 
@@ -280,7 +383,7 @@ function ChatLayoutContent() {
     getResponseAndTitle();
   // We want this effect to run ONLY when a new user message is added.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSession?.messages.filter(m => m.role === 'user').length, activeSession?.id]);
+  }, [activeSession?.messages.filter(m => m.role === 'user').length, activeSession?.id, isMounted]);
 
   const createNewChat = useCallback(() => {
     const newSession = sessionOps.createNewSession();

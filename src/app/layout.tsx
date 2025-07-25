@@ -86,7 +86,7 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link rel="manifest" href="/manifest.json" />
       </head>
-      <body className={`font-sans antialiased ${inter.className}`}>
+      <body className={`font-sans antialiased ${inter.className}`} suppressHydrationWarning>
         {children}
         <Toaster />
       </body>
