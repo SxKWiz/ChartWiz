@@ -9,6 +9,7 @@
 
 import { PriceData, calculateATR, analyzeMarketStructure } from './advanced-technical-indicators';
 import { getPricePrecision, formatPrice } from './trading-precision';
+import { getOptimalEntryTiming, type CandlePattern } from './candle-confirmation-system';
 
 export interface OptimizedEntry {
   entryPrice: number;
@@ -23,7 +24,14 @@ export interface OptimizedEntry {
     immediate: boolean;
     waitForPullback: boolean;
     waitForBreakout: boolean;
+    waitForCandle: boolean;
     maxWaitTime: string;
+    candleConfirmation?: {
+      decision: 'enter_now' | 'wait_next_candle' | 'wait_for_setup' | 'avoid_trade';
+      reasoning: string;
+      waitingFor: string;
+      timeEstimate: string;
+    };
   };
 }
 
@@ -84,7 +92,7 @@ export interface OptimizationResult {
 }
 
 /**
- * Finds optimal entry zones using multiple technical factors
+ * Finds optimal entry zones using multiple technical factors with candle confirmation
  */
 export function optimizeEntry(input: EntryOptimizationInput): OptimizedEntry {
   const { currentPrice, priceData, direction, supportLevels, resistanceLevels, tradingPersona } = input;
@@ -104,84 +112,154 @@ export function optimizeEntry(input: EntryOptimizationInput): OptimizedEntry {
     direction === 'long' ? level > currentPrice : level > currentPrice && level < currentPrice * 1.05
   ).sort((a, b) => Math.abs(currentPrice - a) - Math.abs(currentPrice - b));
 
+  // Get the key level for candle confirmation
+  const keyLevel = direction === 'long' ? 
+    (relevantSupports[0] || currentPrice * 0.995) : 
+    (relevantResistances[0] || currentPrice * 1.005);
+
+  // Create mock current candle and previous candles for confirmation analysis
+  const currentCandle = {
+    open: currentPrice * 0.999,
+    high: currentPrice * 1.002,
+    low: currentPrice * 0.997,
+    close: currentPrice,
+    volume: 1000,
+    timestamp: Date.now()
+  };
+  
+  const previousCandles = priceData.slice(-20).map(data => ({
+    open: data.open,
+    high: data.high,
+    low: data.low,
+    close: data.close,
+    volume: data.volume
+  }));
+
+  // Get candle confirmation analysis
+  const candleConfirmation = getOptimalEntryTiming(
+    currentCandle,
+    previousCandles,
+    direction,
+    keyLevel,
+    tradingPersona
+  );
+
   let optimalEntry: number;
   let entryReason: string;
   let confidence: number;
   let timing: OptimizedEntry['timing'];
 
-  if (direction === 'long') {
-    // For long trades, look for pullback opportunities
-    const nearestSupport = relevantSupports[0];
-    const pullbackLevel = nearestSupport || currentPrice * 0.995;
-    
-    // Calculate optimal entry based on persona
-    if (tradingPersona.toLowerCase().includes('scalp')) {
-      // Scalpers want immediate entries near current price
-      optimalEntry = currentPrice * 0.9985; // Slightly below current price
-      entryReason = 'Scalping entry near current price with tight spread';
-      confidence = 75;
-      timing = {
-        immediate: true,
-        waitForPullback: false,
-        waitForBreakout: false,
-        maxWaitTime: '5 minutes'
-      };
-    } else if (tradingPersona.toLowerCase().includes('swing')) {
-      // Swing traders wait for better pullback entries
-      const pullbackTarget = nearestSupport ? 
-        nearestSupport + (atr * 0.25) : // Slightly above support
-        currentPrice * 0.992; // 0.8% pullback if no clear support
-      
-      optimalEntry = pullbackTarget;
-      entryReason = `Swing entry on pullback to support at ${formatPrice(pullbackTarget, getPricePrecision(input.asset, currentPrice))}`;
-      confidence = nearestSupport ? 85 : 70;
-      timing = {
-        immediate: false,
-        waitForPullback: true,
-        waitForBreakout: false,
-        maxWaitTime: '4-12 hours'
-      };
-    } else {
-      // Conservative/position traders want strong confirmation
-      const confirmationLevel = nearestSupport ? nearestSupport + (atr * 0.5) : currentPrice * 0.995;
-      optimalEntry = confirmationLevel;
-      entryReason = `Conservative entry with support confirmation`;
-      confidence = 80;
-      timing = {
-        immediate: false,
-        waitForPullback: true,
-        waitForBreakout: false,
-        maxWaitTime: '1-3 days'
-      };
-    }
+  // Adjust entry strategy based on candle confirmation
+  if (candleConfirmation.entryDecision === 'enter_now') {
+    // Strong confirmation - can enter immediately
+    optimalEntry = candleConfirmation.entryPrice;
+    entryReason = `IMMEDIATE ENTRY: ${candleConfirmation.reasoning} (Candle confirmed)`;
+    confidence = 85;
+    timing = {
+      immediate: true,
+      waitForPullback: false,
+      waitForBreakout: false,
+      waitForCandle: false,
+      maxWaitTime: 'Enter now',
+      candleConfirmation: {
+        decision: candleConfirmation.entryDecision,
+        reasoning: candleConfirmation.reasoning,
+        waitingFor: candleConfirmation.waitingFor,
+        timeEstimate: candleConfirmation.timeEstimate
+      }
+    };
+  } else if (candleConfirmation.entryDecision === 'wait_next_candle') {
+    // Wait for next candle confirmation
+    optimalEntry = candleConfirmation.entryPrice;
+    entryReason = `WAIT FOR NEXT CANDLE: ${candleConfirmation.reasoning} (Prevent premature entry)`;
+    confidence = 75;
+    timing = {
+      immediate: false,
+      waitForPullback: false,
+      waitForBreakout: false,
+      waitForCandle: true,
+      maxWaitTime: candleConfirmation.timeEstimate,
+      candleConfirmation: {
+        decision: candleConfirmation.entryDecision,
+        reasoning: candleConfirmation.reasoning,
+        waitingFor: candleConfirmation.waitingFor,
+        timeEstimate: candleConfirmation.timeEstimate
+      }
+    };
   } else {
-    // For short trades, look for bounce opportunities
-    const nearestResistance = relevantResistances[0];
-    const bounceLevel = nearestResistance || currentPrice * 1.005;
-    
-    if (tradingPersona.toLowerCase().includes('scalp')) {
-      optimalEntry = currentPrice * 1.0015;
-      entryReason = 'Scalping short entry near current price';
-      confidence = 75;
-      timing = {
-        immediate: true,
-        waitForPullback: false,
-        waitForBreakout: false,
-        maxWaitTime: '5 minutes'
-      };
-    } else {
-      const bounceTarget = nearestResistance ? 
-        nearestResistance - (atr * 0.25) :
-        currentPrice * 1.008;
+    // Traditional entry logic with candle awareness
+    if (direction === 'long') {
+      const nearestSupport = relevantSupports[0];
       
-      optimalEntry = bounceTarget;
-      entryReason = `Short entry on bounce from resistance`;
-      confidence = nearestResistance ? 85 : 70;
+      if (tradingPersona.toLowerCase().includes('scalp')) {
+        optimalEntry = currentPrice * 0.9985;
+        entryReason = 'Scalping entry - but wait for candle confirmation to avoid premature entry';
+        confidence = 60; // Reduced due to lack of confirmation
+        timing = {
+          immediate: false,
+          waitForPullback: false,
+          waitForBreakout: false,
+          waitForCandle: true,
+          maxWaitTime: candleConfirmation.timeEstimate,
+          candleConfirmation: {
+            decision: candleConfirmation.entryDecision,
+            reasoning: candleConfirmation.reasoning,
+            waitingFor: candleConfirmation.waitingFor,
+            timeEstimate: candleConfirmation.timeEstimate
+          }
+        };
+      } else {
+        const pullbackTarget = nearestSupport ? 
+          nearestSupport + (atr * 0.25) : 
+          currentPrice * 0.992;
+        
+        optimalEntry = pullbackTarget;
+        entryReason = `Swing entry on pullback + candle confirmation (prevents "one candle too early" entries)`;
+        confidence = nearestSupport ? 70 : 60; // Reduced due to confirmation needed
+        timing = {
+          immediate: false,
+          waitForPullback: true,
+          waitForBreakout: false,
+          waitForCandle: true,
+          maxWaitTime: candleConfirmation.timeEstimate,
+          candleConfirmation: {
+            decision: candleConfirmation.entryDecision,
+            reasoning: candleConfirmation.reasoning,
+            waitingFor: candleConfirmation.waitingFor,
+            timeEstimate: candleConfirmation.timeEstimate
+          }
+        };
+      }
+    } else {
+      // Short trade logic with confirmation
+      const nearestResistance = relevantResistances[0];
+      
+      if (tradingPersona.toLowerCase().includes('scalp')) {
+        optimalEntry = currentPrice * 1.0015;
+        entryReason = 'Scalping short - wait for candle confirmation';
+        confidence = 60;
+      } else {
+        const bounceTarget = nearestResistance ? 
+          nearestResistance - (atr * 0.25) :
+          currentPrice * 1.008;
+        
+        optimalEntry = bounceTarget;
+        entryReason = `Short entry on bounce + candle confirmation`;
+        confidence = nearestResistance ? 70 : 60;
+      }
+      
       timing = {
         immediate: false,
         waitForPullback: true,
         waitForBreakout: false,
-        maxWaitTime: '4-12 hours'
+        waitForCandle: true,
+        maxWaitTime: candleConfirmation.timeEstimate,
+        candleConfirmation: {
+          decision: candleConfirmation.entryDecision,
+          reasoning: candleConfirmation.reasoning,
+          waitingFor: candleConfirmation.waitingFor,
+          timeEstimate: candleConfirmation.timeEstimate
+        }
       };
     }
   }
