@@ -11,6 +11,7 @@
 import { ai } from '../genkit';
 import { z } from 'zod';
 import { advancedPatternRecognitionSystem, type ComprehensivePatternAnalysis } from '../../lib/pattern-recognition/advanced-pattern-recognition-system';
+import { realTimeDataProvider } from '../../lib/data-providers/real-time-data-provider';
 
 const AdvancedPatternRecognitionInputSchema = z.object({
   primaryChartUri: z.string().describe("Primary cryptocurrency chart image as a data URI."),
@@ -285,23 +286,71 @@ const advancedPatternRecognitionAIFlow = ai.defineFlow(
   },
   async (input: AdvancedPatternRecognitionInput) => {
     try {
-      // Generate sample data if not provided (in a real implementation, this would come from chart analysis or market data feeds)
-      const priceData = input.priceData || generateSamplePriceData();
-      const volumeData = input.volumeData || generateSampleVolumeData(priceData.length);
-      const timestamps = input.timestamps || generateSampleTimestamps(priceData.length);
-      const currentPrice = input.currentPrice || priceData[priceData.length - 1];
+      // Get real-time data if not provided
+      let priceData = input.priceData;
+      let volumeData = input.volumeData;
+      let timestamps = input.timestamps;
+      let currentPrice = input.currentPrice;
       
-      // Run comprehensive pattern analysis
-      const patternAnalysis: ComprehensivePatternAnalysis = await advancedPatternRecognitionSystem.analyzePatterns(
-        input.asset || 'BTC',
-        input.timeframe || '4h',
-        priceData,
-        volumeData,
-        timestamps,
-        undefined, // orderBookData - would be provided in real implementation
-        undefined, // tradeData - would be provided in real implementation
-        currentPrice
-      );
+      if (!priceData || !volumeData || !timestamps) {
+        console.log('Fetching real-time market data...');
+        
+        // Determine symbol from asset
+        const symbol = `${input.asset || 'BTC'}USDT`;
+        const timeframe = input.timeframe || '4h';
+        
+        try {
+          // Get historical data from real-time provider
+          const historicalData = await realTimeDataProvider.getHistoricalData(symbol, timeframe, 100);
+          priceData = historicalData.prices;
+          volumeData = historicalData.volumes;
+          timestamps = historicalData.timestamps;
+          currentPrice = priceData[priceData.length - 1];
+          
+          console.log(`Retrieved ${priceData.length} data points for ${symbol}`);
+        } catch (error) {
+          console.warn('Failed to fetch real-time data, using fallback data:', error);
+          // Fall back to generated data
+          priceData = generateSamplePriceData();
+          volumeData = generateSampleVolumeData(priceData.length);
+          timestamps = generateSampleTimestamps(priceData.length);
+          currentPrice = priceData[priceData.length - 1];
+        }
+      }
+      
+      // Get real-time order book and trade data if available
+      let orderBookData;
+      let tradeData;
+      
+      try {
+        const symbol = `${input.asset || 'BTC'}USDT`;
+        const orderBook = await realTimeDataProvider.getOrderBook(symbol);
+        const recentTrades = await realTimeDataProvider.getRecentTrades(symbol);
+        
+        if (orderBook) {
+          orderBookData = [orderBook];
+          console.log(`Retrieved order book with ${orderBook.bids.length} bids and ${orderBook.asks.length} asks`);
+        }
+        
+        if (recentTrades && recentTrades.length > 0) {
+          tradeData = recentTrades;
+          console.log(`Retrieved ${recentTrades.length} recent trades`);
+        }
+      } catch (error) {
+        console.warn('Failed to fetch real-time order book/trade data:', error);
+      }
+      
+              // Run comprehensive pattern analysis
+        const patternAnalysis: ComprehensivePatternAnalysis = await advancedPatternRecognitionSystem.analyzePatterns(
+          input.asset || 'BTC',
+          input.timeframe || '4h',
+          priceData,
+          volumeData,
+          timestamps,
+          orderBookData, // Real-time order book data
+          tradeData, // Real-time trade data
+          currentPrice
+        );
       
       // Prepare analysis data for the AI prompt
       const patternAnalysisData = JSON.stringify(patternAnalysis, null, 2);
