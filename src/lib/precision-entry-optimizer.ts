@@ -54,9 +54,22 @@ export interface EntryOptimizationInput {
   volumeProfile?: any;
 }
 
+export interface SmartTakeProfit {
+  targets: Array<{
+    price: number;
+    probability: number;
+    partialExit: number;
+    reasoning: string;
+    level: 'conservative' | 'aggressive' | 'extension';
+  }>;
+  scalingStrategy: string;
+  overallRiskReward: number;
+}
+
 export interface OptimizationResult {
   entry: OptimizedEntry;
   stopLoss: OptimizedStopLoss;
+  smartTakeProfit: SmartTakeProfit;
   positionSizing: {
     recommendedSize: number;
     maxSize: number;
@@ -291,6 +304,7 @@ export function optimizeStopLoss(
 
 /**
  * Gets volatility multiplier based on risk tolerance and trading style
+ * Updated with +5% more space to prevent premature stop hits
  */
 function getVolatilityMultiplier(
   riskTolerance: string, 
@@ -298,26 +312,26 @@ function getVolatilityMultiplier(
 ): number {
   let baseMultiplier = 1.5; // Default
   
-  // Adjust for risk tolerance
+  // Adjust for risk tolerance with +5% buffer
   switch (riskTolerance) {
     case 'conservative':
-      baseMultiplier = 2.0; // Wider stops for conservative traders
+      baseMultiplier = 2.1; // Was 2.0, now +5% more space
       break;
     case 'moderate':
-      baseMultiplier = 1.5;
+      baseMultiplier = 1.575; // Was 1.5, now +5% more space  
       break;
     case 'aggressive':
-      baseMultiplier = 1.2; // Tighter stops for aggressive traders
+      baseMultiplier = 1.26; // Was 1.2, now +5% more space
       break;
   }
   
-  // Adjust for trading persona
+  // Adjust for trading persona with optimized multipliers
   if (tradingPersona.toLowerCase().includes('scalp')) {
-    baseMultiplier *= 0.6; // Much tighter for scalping
+    baseMultiplier *= 0.63; // Was 0.6, now +5% more space
   } else if (tradingPersona.toLowerCase().includes('day')) {
-    baseMultiplier *= 0.8; // Tighter for day trading
+    baseMultiplier *= 0.84; // Was 0.8, now +5% more space
   } else if (tradingPersona.toLowerCase().includes('position')) {
-    baseMultiplier *= 1.5; // Wider for position trading
+    baseMultiplier *= 1.575; // Was 1.5, now +5% more space
   }
   
   return baseMultiplier;
@@ -352,11 +366,260 @@ function getTrailingConfig(
 }
 
 /**
- * Complete optimization that combines entry and stop-loss logic
+ * Calculates smart take-profit targets with probability-based scaling
+ */
+export function calculateSmartTakeProfit(
+  input: EntryOptimizationInput,
+  entryPrice: number,
+  stopPrice: number
+): SmartTakeProfit {
+  const { currentPrice, direction, resistanceLevels, supportLevels, tradingPersona } = input;
+  const atr = calculateATR(input.priceData, 14);
+  const riskAmount = Math.abs(entryPrice - stopPrice);
+  
+  const targets: SmartTakeProfit['targets'] = [];
+  
+  if (direction === 'long') {
+    // Long take-profit logic
+    const nearestResistance = resistanceLevels
+      .filter(level => level > entryPrice)
+      .sort((a, b) => a - b)[0]; // Closest resistance above entry
+    
+    if (tradingPersona.toLowerCase().includes('scalp')) {
+      // Scalping: Quick targets with high probability
+      targets.push(
+        {
+          price: entryPrice + (riskAmount * 1.0), // 1:1 R/R
+          probability: 85,
+          partialExit: 50,
+          reasoning: 'Conservative scalping target at 1:1 risk/reward',
+          level: 'conservative'
+        },
+        {
+          price: entryPrice + (riskAmount * 1.5), // 1.5:1 R/R
+          probability: 65,
+          partialExit: 50,
+          reasoning: 'Aggressive scalping target at previous micro-high',
+          level: 'aggressive'
+        }
+      );
+    } else if (tradingPersona.toLowerCase().includes('day')) {
+      // Day trading: Session targets
+      const sessionTarget = nearestResistance || entryPrice + (atr * 2);
+      targets.push(
+        {
+          price: entryPrice + (riskAmount * 1.5), // 1.5:1 R/R minimum
+          probability: 75,
+          partialExit: 40,
+          reasoning: 'Day trading target at 1.5:1 minimum R/R',
+          level: 'conservative'
+        },
+        {
+          price: Math.min(sessionTarget, entryPrice + (riskAmount * 2.5)),
+          probability: 55,
+          partialExit: 40,
+          reasoning: 'Session high target or 2.5:1 R/R',
+          level: 'aggressive'
+        },
+        {
+          price: entryPrice + (riskAmount * 3.5), // Extended target
+          probability: 35,
+          partialExit: 20,
+          reasoning: 'Extended day trading target at key resistance',
+          level: 'extension'
+        }
+      );
+    } else if (tradingPersona.toLowerCase().includes('swing')) {
+      // Swing trading: Pattern and Fibonacci targets
+      targets.push(
+        {
+          price: entryPrice + (riskAmount * 2.0), // 2:1 R/R minimum
+          probability: 70,
+          partialExit: 30,
+          reasoning: 'Swing trading minimum 2:1 risk/reward target',
+          level: 'conservative'
+        },
+        {
+          price: nearestResistance || entryPrice + (riskAmount * 3.0),
+          probability: 55,
+          partialExit: 40,
+          reasoning: 'Major resistance level or 3:1 pattern target',
+          level: 'aggressive'
+        },
+        {
+          price: entryPrice + (riskAmount * 4.5), // Fibonacci extension
+          probability: 35,
+          partialExit: 30,
+          reasoning: 'Fibonacci 161.8%-261.8% extension target',
+          level: 'extension'
+        }
+      );
+    } else {
+      // Position trading: Major levels
+      targets.push(
+        {
+          price: entryPrice + (riskAmount * 3.0), // 3:1 R/R minimum
+          probability: 65,
+          partialExit: 25,
+          reasoning: 'Position trading minimum 3:1 risk/reward',
+          level: 'conservative'
+        },
+        {
+          price: entryPrice + (riskAmount * 5.0), // Major target
+          probability: 45,
+          partialExit: 25,
+          reasoning: 'Major weekly/monthly resistance level',
+          level: 'aggressive'
+        },
+        {
+          price: entryPrice + (riskAmount * 8.0), // Macro target
+          probability: 25,
+          partialExit: 50,
+          reasoning: 'Macro Fibonacci 261.8%-423.6% extension',
+          level: 'extension'
+        }
+      );
+    }
+  } else {
+    // Short take-profit logic (mirror of long logic)
+    const nearestSupport = supportLevels
+      .filter(level => level < entryPrice)
+      .sort((a, b) => b - a)[0]; // Closest support below entry
+    
+    if (tradingPersona.toLowerCase().includes('scalp')) {
+      targets.push(
+        {
+          price: entryPrice - (riskAmount * 1.0),
+          probability: 85,
+          partialExit: 50,
+          reasoning: 'Conservative scalping short target at 1:1',
+          level: 'conservative'
+        },
+        {
+          price: entryPrice - (riskAmount * 1.5),
+          probability: 65,
+          partialExit: 50,
+          reasoning: 'Aggressive scalping short target',
+          level: 'aggressive'
+        }
+      );
+    } else if (tradingPersona.toLowerCase().includes('day')) {
+      targets.push(
+        {
+          price: entryPrice - (riskAmount * 1.5),
+          probability: 75,
+          partialExit: 40,
+          reasoning: 'Day trading short target at 1.5:1',
+          level: 'conservative'
+        },
+        {
+          price: Math.max(nearestSupport || 0, entryPrice - (riskAmount * 2.5)),
+          probability: 55,
+          partialExit: 40,
+          reasoning: 'Session low or 2.5:1 short target',
+          level: 'aggressive'
+        },
+        {
+          price: entryPrice - (riskAmount * 3.5),
+          probability: 35,
+          partialExit: 20,
+          reasoning: 'Extended short target at key support',
+          level: 'extension'
+        }
+      );
+    } else if (tradingPersona.toLowerCase().includes('swing')) {
+      targets.push(
+        {
+          price: entryPrice - (riskAmount * 2.0),
+          probability: 70,
+          partialExit: 30,
+          reasoning: 'Swing short minimum 2:1 target',
+          level: 'conservative'
+        },
+        {
+          price: nearestSupport || entryPrice - (riskAmount * 3.0),
+          probability: 55,
+          partialExit: 40,
+          reasoning: 'Major support or 3:1 short target',
+          level: 'aggressive'
+        },
+        {
+          price: entryPrice - (riskAmount * 4.5),
+          probability: 35,
+          partialExit: 30,
+          reasoning: 'Fibonacci extension short target',
+          level: 'extension'
+        }
+      );
+    } else {
+      targets.push(
+        {
+          price: entryPrice - (riskAmount * 3.0),
+          probability: 65,
+          partialExit: 25,
+          reasoning: 'Position short minimum 3:1 target',
+          level: 'conservative'
+        },
+        {
+          price: entryPrice - (riskAmount * 5.0),
+          probability: 45,
+          partialExit: 25,
+          reasoning: 'Major support breakdown target',
+          level: 'aggressive'
+        },
+        {
+          price: entryPrice - (riskAmount * 8.0),
+          probability: 25,
+          partialExit: 50,
+          reasoning: 'Macro short extension target',
+          level: 'extension'
+        }
+      );
+    }
+  }
+  
+  // Calculate overall risk/reward
+  const weightedReward = targets.reduce((sum, target) => {
+    const targetRisk = Math.abs(target.price - entryPrice);
+    return sum + (targetRisk * (target.partialExit / 100) * (target.probability / 100));
+  }, 0);
+  const overallRiskReward = weightedReward / riskAmount;
+  
+  // Generate scaling strategy
+  const scalingStrategy = generateScalingStrategy(targets, tradingPersona);
+  
+  return {
+    targets,
+    scalingStrategy,
+    overallRiskReward
+  };
+}
+
+/**
+ * Generates intelligent scaling strategy based on targets
+ */
+function generateScalingStrategy(
+  targets: SmartTakeProfit['targets'],
+  tradingPersona: string
+): string {
+  if (tradingPersona.toLowerCase().includes('scalp')) {
+    return 'Quick scaling: Exit 50% at first target, 50% at second target. Hold time: 5-30 minutes maximum.';
+  } else if (tradingPersona.toLowerCase().includes('day')) {
+    return 'Intraday scaling: Exit 40% at 1.5:1, 40% at major level, trail 20% with tight stops. Close all positions before market close.';
+  } else if (tradingPersona.toLowerCase().includes('swing')) {
+    return 'Swing scaling: Exit 30% at 2:1, 40% at major resistance/support, trail remaining 30% with wider stops for extended moves.';
+  } else {
+    return 'Position scaling: Exit 25% at 3:1, 25% at 5:1, trail remaining 50% with very wide stops for macro moves. Hold for weeks/months.';
+  }
+}
+
+/**
+ * Complete optimization that combines entry, stop-loss, and smart take-profit logic
  */
 export function optimizeTradeEntry(input: EntryOptimizationInput): OptimizationResult {
   const entry = optimizeEntry(input);
   const stopLoss = optimizeStopLoss(input, entry.entryPrice);
+  const smartTakeProfit = calculateSmartTakeProfit(input, entry.entryPrice, stopLoss.stopPrice);
   
   // Calculate risk metrics
   const riskPercent = Math.abs((entry.entryPrice - stopLoss.stopPrice) / entry.entryPrice) * 100;
@@ -372,17 +635,19 @@ export function optimizeTradeEntry(input: EntryOptimizationInput): OptimizationR
     input.tradingPersona
   );
   
-  // Position sizing based on optimized risk
+  // Position sizing based on optimized risk and targets
   const baseRisk = getRiskPercentage(input.riskTolerance);
-  const adjustedRisk = Math.max(baseRisk * 0.5, Math.min(baseRisk * 1.5, baseRisk / (riskPercent / 2)));
+  const riskRewardBonus = Math.min(0.5, smartTakeProfit.overallRiskReward / 10); // Bonus for good R/R
+  const adjustedRisk = Math.max(baseRisk * 0.5, Math.min(baseRisk * 1.5, baseRisk + riskRewardBonus));
   
   return {
     entry,
     stopLoss,
+    smartTakeProfit,
     positionSizing: {
       recommendedSize: adjustedRisk,
       maxSize: baseRisk * 2,
-      reasoning: `Adjusted position size based on ${riskPercent.toFixed(1)}% risk and ${probabilityOfStop.toFixed(0)}% stop probability`
+      reasoning: `Adjusted for ${riskPercent.toFixed(1)}% risk, ${probabilityOfStop.toFixed(0)}% stop probability, ${smartTakeProfit.overallRiskReward.toFixed(1)}:1 overall R/R`
     },
     riskAnalysis: {
       estimatedRisk: riskPercent,

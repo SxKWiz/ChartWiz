@@ -10,6 +10,7 @@ import {z} from 'zod';
 import { validateAndEnhanceRecommendation, type RawRecommendation } from '../../lib/recommendation-processor';
 import { generateAnalysisContext } from '../../lib/chart-analysis-helpers';
 import { optimizeTradeEntry, type EntryOptimizationInput, type OptimizationResult } from '../../lib/precision-entry-optimizer';
+import { getOptimizedTradingSetup, type TimeframeDetection, type PersonaOptimization } from '../../lib/timeframe-persona-detector';
 
 const EnhancedMarketAnalysisInputSchema = z.object({
   primaryChartUri: z
@@ -106,11 +107,26 @@ const enhancedMarketAnalysisPrompt = ai.definePrompt({
   output: {schema: EnhancedMarketAnalysisOutputSchema},
   prompt: `You are an elite institutional-grade cryptocurrency analyst with advanced technical analysis skills, market psychology expertise, and risk management proficiency. Your analysis incorporates multiple dimensions: technical patterns, market structure, sentiment, and institutional behavior.
 
-{{#if tradingPersona}}
 **Primary Trading Persona:** {{{tradingPersona}}}
-{{else}}
-**Default Persona:** Institutional-grade swing trader focused on high-probability, asymmetric risk-reward opportunities.
-{{/if}}
+
+**OPTIMIZED PERSONA STRATEGIES:**
+
+**Entry Strategy Optimization:**
+- **For Longs**: Enter on pullbacks to support levels with proper confirmation
+- **For Shorts**: Enter on bounces to resistance levels with rejection signals
+- **Timing**: Use patience over urgency - wait for optimal setups rather than chasing
+
+**Stop-Loss Optimization (+5% More Space):**
+- **Technical Stops**: Place below/above key levels with enhanced ATR buffer (30% minimum)
+- **Volatility Stops**: Use optimized multipliers - Conservative: 2.1x ATR, Moderate: 1.575x ATR, Aggressive: 1.26x ATR
+- **Minimum Distances**: Scalp: 0.2%, Day: 0.5%, Swing: 0.5%, Position: 1.0%
+- **Buffer Enhancement**: All stops get +5% additional space to prevent premature exits
+
+**SMART Take-Profit Strategy:**
+- **Multiple Targets**: Always provide 2-3 take-profit levels with probability assessments
+- **Scaling Strategy**: Define exact percentages to exit at each level
+- **Fibonacci Integration**: Use 127.2%, 161.8%, 261.8% extensions for targets
+- **Level Probability**: Include success probability for each target (conservative: 70%+, aggressive: 50%+, extension: 30%+)
 
 **Risk Tolerance:** {{riskTolerance}}
 **Market Phase Context:** {{marketPhase}}
@@ -277,7 +293,29 @@ const enhancedMarketAnalysisFlow = ai.defineFlow(
     // Generate context from the question
     const context = generateAnalysisContext(input.question);
     
-    const {output} = await enhancedMarketAnalysisPrompt(input);
+    // Get optimized trading setup with timeframe detection
+    const tradingSetup = getOptimizedTradingSetup(
+      input.question,
+      undefined, // Chart analysis text would go here in full implementation
+      input.tradingPersona
+    );
+    
+    // Use auto-detected persona if not manually specified
+    const optimizedInput = {
+      ...input,
+      tradingPersona: tradingSetup.finalPersona
+    };
+    
+    console.log('🎯 Trading Setup Optimization:', {
+      originalPersona: input.tradingPersona,
+      detectedTimeframe: tradingSetup.timeframeDetection.detectedTimeframe,
+      finalPersona: tradingSetup.finalPersona,
+      confidence: `${tradingSetup.timeframeDetection.confidence}%`,
+      reasoning: tradingSetup.setupReasoning,
+      personaConfig: tradingSetup.personaConfig
+    });
+    
+    const {output} = await enhancedMarketAnalysisPrompt(optimizedInput);
     
     if (!output) {
       throw new Error('No output received from enhanced market analysis');
