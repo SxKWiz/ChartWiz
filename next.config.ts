@@ -16,6 +16,8 @@ const nextConfig: NextConfig = {
   // Performance optimizations
   experimental: {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
+    // Enable better hydration handling
+    optimizeServerReact: true,
   },
   
   // Compression
@@ -40,6 +42,16 @@ const nextConfig: NextConfig = {
     // Tree shaking improvements
     config.optimization.usedExports = true;
     config.optimization.sideEffects = false;
+    
+    // Better handling of client-side vs server-side code
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+      };
+    }
     
     // Bundle splitting
     if (!isServer) {
