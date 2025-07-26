@@ -5,6 +5,7 @@ import { analyzeChartImage, type AnalyzeChartImageOutput } from '@/ai/flows/anal
 import { textChat, type TextChatOutput } from '@/ai/flows/text-chat-flow';
 import { summarizeChatHistory, type SummarizeChatHistoryOutput } from '@/ai/flows/summarize-chat-history';
 import { scanForPatterns, type ScanForPatternsOutput } from '@/ai/flows/scan-for-patterns-flow';
+import { intelligentTradeDetector, type IntelligentTradeDetectorInput, type IntelligentTradeDetectorOutput } from '@/ai/flows/intelligent-trade-detector';
 import { comprehensiveAIBrain, type ComprehensiveAnalysisInput, type ComprehensiveAnalysisOutput } from '@/ai/flows/comprehensive-ai-brain';
 import { enhancedMarketAnalysis, type EnhancedMarketAnalysisInput, type EnhancedMarketAnalysisOutput } from '@/ai/flows/enhanced-market-analysis';
 import { marketSentimentAnalysis, type MarketSentimentAnalysisInput, type MarketSentimentAnalysisOutput } from '@/ai/flows/market-sentiment-analyzer';
@@ -219,6 +220,33 @@ export async function scanScreenForPatterns(chartImageUri: string): Promise<Scan
       supportResistance: 'Error',
       volumeAnalysis: 'Error',
       synthesis: 'An error occurred during pattern scanning.',
+    };
+  }
+}
+
+export async function detectTradeOpportunity(chartImageUri: string, previousAnalysis?: string, scanMode: 'light' | 'detailed' = 'light'): Promise<IntelligentTradeDetectorOutput> {
+  try {
+    const input: IntelligentTradeDetectorInput = {
+      chartImageUri,
+      previousAnalysis,
+      scanMode,
+    };
+    const result = await intelligentTradeDetector(input);
+    return result;
+  } catch (e) {
+    console.error('Trade detection failed:', e);
+    // Return a safe default response
+    return {
+      tradeOpportunity: {
+        opportunityFound: false,
+        confidence: 0,
+        tradeType: 'neutral',
+        urgency: 'watch',
+        reasoning: 'Analysis failed due to technical error.',
+      },
+      screenshotAnalysis: 'Unable to analyze chart due to error.',
+      recommendation: 'Please try again or check your connection.',
+      nextScanIn: 30,
     };
   }
 }
