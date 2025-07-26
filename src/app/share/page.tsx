@@ -19,11 +19,11 @@ import {
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
-import { Loader2, Mic, MonitorPlay, Wand2, X, Camera, Image as ImageIcon, Sparkles, ScanLine, AlertCircle, Target, Brain, Zap } from 'lucide-react';
+import { Loader2, Mic, MonitorPlay, Wand2, X, Camera, Image as ImageIcon, Sparkles, ScanLine, AlertCircle, Target, Brain, Zap, TrendingUp, StopCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { analyzeChartImage } from '@/ai/flows/analyze-chart-image';
 import { textToSpeech } from '@/ai/flows/text-to-speech-flow';
-import { scanScreenForPatterns, detectTradeOpportunity } from '@/app/actions';
+import { scanScreenForPatterns, detectTradeOpportunity, monitorTradeProgress } from '@/app/actions';
 import { ChatMessages } from '@/components/chat/chat-messages';
 import type { Message } from '@/lib/types';
 import { nanoid } from 'nanoid';
@@ -54,6 +54,14 @@ export default function SharePage() {
   const [previousAnalysis, setPreviousAnalysis] = useState<string>('');
   const [tradeOpportunities, setTradeOpportunities] = useState<any[]>([]);
   const [scanMode, setScanMode] = useState<'light' | 'detailed'>('light');
+  
+  // Active Trade Monitoring state
+  const [isMonitoringActiveTrade, setIsMonitoringActiveTrade] = useState(false);
+  const [activeTrade, setActiveTrade] = useState<any>(null);
+  const [tradeUpdateInterval, setTradeUpdateInterval] = useState(10); // in seconds
+  const [lastTradeUpdateTime, setLastTradeUpdateTime] = useState<Date | null>(null);
+  const [tradeMonitoringStatus, setTradeMonitoringStatus] = useState('Idle');
+  const [tradeUpdates, setTradeUpdates] = useState<any[]>([]);
 
 
   const [chart1, setChart1] = useState<string | null>(null);
@@ -63,6 +71,7 @@ export default function SharePage() {
   const recognitionRef = useRef<any>(null);
   const scannerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const tradeDetectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const tradeMonitoringIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
   const captureFrame = useCallback((setter?: (dataUri: string) => void) => {
@@ -290,6 +299,7 @@ export default function SharePage() {
     if (isHandsFreeMode) handleHandsFreeToggle(false);
     if (isScanning) stopScanning();
     if (isTradeDetecting) stopTradeDetection();
+    if (isMonitoringActiveTrade) stopTradeMonitoring();
   };
   
 
@@ -353,7 +363,7 @@ export default function SharePage() {
         const result = await detectTradeOpportunity(frame, previousAnalysis, scanMode);
         setLastTradeDetectionTime(new Date());
 
-        if (result.tradeOpportunity.opportunityFound) {
+        if (result.tradeOpportunity.opportunityFound && !isMonitoringActiveTrade) {
             const opportunity = {
                 ...result.tradeOpportunity,
                 timestamp: new Date(),
@@ -412,8 +422,25 @@ export default function SharePage() {
             
             setTradeDetectorStatus(`Opportunity Found: ${result.tradeOpportunity.patternName}`);
             
-            // Switch to detailed mode for next scan
-            setScanMode('detailed');
+            // Set the active trade and start monitoring
+            const activeTradeData = {
+                entryPrice: result.tradeOpportunity.entryPrice || 'N/A',
+                takeProfit: result.tradeOpportunity.takeProfit || [],
+                stopLoss: result.tradeOpportunity.stopLoss || 'N/A',
+                tradeType: result.tradeOpportunity.tradeType,
+                patternName: result.tradeOpportunity.patternName,
+                entryTime: new Date().toISOString(),
+                reasoning: result.tradeOpportunity.reasoning,
+            };
+            
+            setActiveTrade(activeTradeData);
+            
+            // Stop trade detection and start monitoring
+            stopTradeDetection();
+            startTradeMonitoring();
+            
+        } else if (isMonitoringActiveTrade) {
+            setTradeDetectorStatus('Trade monitoring active - detection paused');
         } else {
             setTradeDetectorStatus('No trade opportunities found. Continuing to monitor...');
             setScanMode('light'); // Switch back to light mode
@@ -456,6 +483,118 @@ export default function SharePage() {
     toast({ title: "AI Trade Detector Deactivated" });
   }, [toast]);
 
+  // Trade Monitoring Functions
+  const runTradeMonitoring = useCallback(async () => {
+    if (!activeTrade) return;
+    
+    setTradeMonitoringStatus('Analyzing trade progress...');
+    const frame = captureFrame();
+    if (!frame) {
+        setTradeMonitoringStatus('Error: Could not capture screen.');
+        return;
+    }
+
+    try {
+        const result = await monitorTradeProgress(frame, activeTrade, tradeUpdates.length > 0 ? tradeUpdates[tradeUpdates.length - 1].marketAnalysis : undefined);
+        setLastTradeUpdateTime(new Date());
+
+        const update = {
+            ...result.tradeUpdate,
+            timestamp: new Date(),
+            screenshot: frame,
+            marketAnalysis: result.marketAnalysis,
+        };
+        
+        setTradeUpdates(prev => [...prev, update]);
+        
+        // Create a message for the chat
+        const userMessage: Message = {
+            id: nanoid(),
+            role: 'user',
+            content: `Trade monitoring update: ${result.tradeUpdate.recommendation}`,
+            imagePreviews: [frame],
+        };
+        
+        const assistantMessage: Message = {
+            id: nanoid(),
+            role: 'assistant',
+            content: `📊 **TRADE UPDATE** 📊
+
+**Current Price:** ${result.tradeUpdate.currentPrice}
+**Price Change:** ${result.tradeUpdate.priceChange}
+**P&L:** ${result.tradeUpdate.profitLoss}
+**Risk Level:** ${result.tradeUpdate.riskLevel.toUpperCase()}
+**Position Status:** ${result.tradeUpdate.positionStatus.toUpperCase()}
+**Stop Loss Distance:** ${result.tradeUpdate.stopLossDistance}
+
+**Take Profit Progress:**
+${result.tradeUpdate.takeProfitProgress.map(tp => `- ${tp.target}: ${tp.progress} (${tp.distance} away)`).join('\n')}
+
+**Recommendation:** ${result.tradeUpdate.recommendation.toUpperCase().replace('_', ' ')}
+**Urgency:** ${result.tradeUpdate.urgency.toUpperCase()}
+
+**Reasoning:** ${result.tradeUpdate.reasoning}
+
+**Market Analysis:** ${result.marketAnalysis}
+
+**Key Levels:** ${result.tradeUpdate.keyLevels?.join(', ') || 'N/A'}
+**Volume Analysis:** ${result.tradeUpdate.volumeAnalysis || 'N/A'}`,
+        };
+        
+        setAnalysisResult(prev => [...prev, userMessage, assistantMessage]);
+        
+        // Show toast for urgent updates
+        if (result.tradeUpdate.urgency === 'immediate' || result.tradeUpdate.urgency === 'high') {
+            toast({
+                title: `🚨 Trade Update: ${result.tradeUpdate.recommendation.toUpperCase().replace('_', ' ')}`,
+                description: `${result.tradeUpdate.reasoning}`,
+                duration: 10000,
+            });
+        }
+        
+        setTradeMonitoringStatus(`Last Update: ${new Date().toLocaleTimeString()}`);
+        
+        // Update monitoring interval based on AI recommendation
+        if (result.nextUpdateIn !== tradeUpdateInterval) {
+            setTradeUpdateInterval(result.nextUpdateIn);
+        }
+        
+    } catch (error) {
+        console.error('Trade monitoring failed:', error);
+        setTradeMonitoringStatus('Error: Trade monitoring failed.');
+        toast({
+            title: 'Trade Monitoring Error',
+            description: 'Failed to analyze trade progress.',
+            variant: 'destructive',
+        });
+    }
+  }, [captureFrame, activeTrade, tradeUpdates, toast, tradeUpdateInterval]);
+
+  const startTradeMonitoring = useCallback(() => {
+    if (!activeTrade) return;
+    
+    setIsMonitoringActiveTrade(true);
+    setTradeMonitoringStatus('Starting trade monitoring...');
+    toast({ title: "Trade Monitoring Activated", description: `Monitoring trade every ${tradeUpdateInterval} seconds.`});
+    
+    // Run first monitoring immediately
+    runTradeMonitoring();
+
+    tradeMonitoringIntervalRef.current = setInterval(runTradeMonitoring, tradeUpdateInterval * 1000);
+  }, [tradeUpdateInterval, toast, runTradeMonitoring, activeTrade]);
+
+  const stopTradeMonitoring = useCallback(() => {
+    setIsMonitoringActiveTrade(false);
+    setTradeMonitoringStatus('Idle');
+    setActiveTrade(null);
+    setTradeUpdates([]);
+    if (tradeMonitoringIntervalRef.current) {
+        clearInterval(tradeMonitoringIntervalRef.current);
+        tradeMonitoringIntervalRef.current = null;
+    }
+    toast({ title: "Trade Monitoring Stopped" });
+  }, [toast]);
+
   useEffect(() => {
     return () => {
         if (scannerIntervalRef.current) {
@@ -463,6 +602,9 @@ export default function SharePage() {
         }
         if (tradeDetectionIntervalRef.current) {
             clearInterval(tradeDetectionIntervalRef.current);
+        }
+        if (tradeMonitoringIntervalRef.current) {
+            clearInterval(tradeMonitoringIntervalRef.current);
         }
     }
   }, []);
@@ -594,6 +736,79 @@ export default function SharePage() {
                            </div>
                         </CardContent>
                     </Card>
+                    {activeTrade && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <TrendingUp className="h-5 w-5 text-orange-500" />
+                                    Active Trade Monitor
+                                </CardTitle>
+                                <CardDescription>Monitoring active trade for updates and recommendations.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="p-3 rounded-lg border bg-muted/30">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <span className="font-semibold text-sm">
+                                            {activeTrade.patternName || 'Active Trade'}
+                                        </span>
+                                        <span className={`text-xs px-2 py-1 rounded ${
+                                            activeTrade.tradeType === 'long' ? 'bg-green-100 text-green-800' :
+                                            'bg-red-100 text-red-800'
+                                        }`}>
+                                            {activeTrade.tradeType.toUpperCase()}
+                                        </span>
+                                    </div>
+                                    <div className="text-xs text-muted-foreground space-y-1">
+                                        <div>Entry: {activeTrade.entryPrice}</div>
+                                        <div>TP: {activeTrade.takeProfit.join(', ')}</div>
+                                        <div>SL: {activeTrade.stopLoss}</div>
+                                        <div className="text-xs">
+                                            Started: {new Date(activeTrade.entryTime).toLocaleTimeString()}
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div className="space-y-2">
+                                    <Label htmlFor='trade-update-interval'>Update Frequency: {tradeUpdateInterval} seconds</Label>
+                                    <Slider 
+                                        id="trade-update-interval"
+                                        min={5}
+                                        max={60}
+                                        step={5}
+                                        value={[tradeUpdateInterval]}
+                                        onValueChange={(value) => setTradeUpdateInterval(value[0])}
+                                        disabled={isMonitoringActiveTrade}
+                                    />
+                                </div>
+                                
+                                <Button 
+                                    onClick={isMonitoringActiveTrade ? stopTradeMonitoring : startTradeMonitoring} 
+                                    className="w-full" 
+                                    variant={isMonitoringActiveTrade ? "destructive" : "default"}
+                                >
+                                    {isMonitoringActiveTrade ? (
+                                        <>
+                                            <StopCircle className="mr-2 h-4 w-4" />
+                                            Stop Monitoring
+                                        </>
+                                    ) : (
+                                        <>
+                                            <TrendingUp className="mr-2 h-4 w-4" />
+                                            Start Monitoring
+                                        </>
+                                    )}
+                                </Button>
+                                
+                                <div className="text-xs text-muted-foreground p-2 rounded-md bg-muted/50 border flex items-center gap-2">
+                                    <AlertCircle className="h-4 w-4"/>
+                                    <div>
+                                        <span className='font-semibold'>Status:</span> {tradeMonitoringStatus} <br/>
+                                        <span className='font-semibold'>Last Update:</span> {lastTradeUpdateTime ? lastTradeUpdateTime.toLocaleTimeString() : 'N/A'}
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
@@ -690,45 +905,84 @@ export default function SharePage() {
                     </div>
                   ) : (
                     <div className="flex-1 flex flex-col gap-4">
-                      {tradeOpportunities.length > 0 && (
-                        <Card>
-                          <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                              <Target className="h-5 w-5 text-orange-500" />
-                              Recent Trade Opportunities
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                            <div className="space-y-3">
-                              {tradeOpportunities.slice(0, 3).map((opportunity, index) => (
-                                <div key={index} className="p-3 rounded-lg border bg-muted/30">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <span className="font-semibold text-sm">
-                                      {opportunity.patternName || 'Pattern'}
-                                    </span>
-                                    <span className={`text-xs px-2 py-1 rounded ${
-                                      opportunity.tradeType === 'long' ? 'bg-green-100 text-green-800' :
-                                      opportunity.tradeType === 'short' ? 'bg-red-100 text-red-800' :
-                                      'bg-gray-100 text-gray-800'
-                                    }`}>
-                                      {opportunity.tradeType.toUpperCase()}
-                                    </span>
-                                  </div>
-                                  <div className="text-xs text-muted-foreground space-y-1">
-                                    <div>Confidence: {opportunity.confidence}%</div>
-                                    <div>Entry: {opportunity.entryPrice || 'N/A'}</div>
-                                    <div>TP: {opportunity.takeProfit?.join(', ') || 'N/A'}</div>
-                                    <div>SL: {opportunity.stopLoss || 'N/A'}</div>
-                                    <div className="text-xs">
-                                      {opportunity.timestamp.toLocaleTimeString()}
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      )}
+                                             {tradeOpportunities.length > 0 && (
+                         <Card>
+                           <CardHeader>
+                             <CardTitle className="flex items-center gap-2">
+                               <Target className="h-5 w-5 text-orange-500" />
+                               Recent Trade Opportunities
+                             </CardTitle>
+                           </CardHeader>
+                           <CardContent>
+                             <div className="space-y-3">
+                               {tradeOpportunities.slice(0, 3).map((opportunity, index) => (
+                                 <div key={index} className="p-3 rounded-lg border bg-muted/30">
+                                   <div className="flex items-center justify-between mb-2">
+                                     <span className="font-semibold text-sm">
+                                       {opportunity.patternName || 'Pattern'}
+                                     </span>
+                                     <span className={`text-xs px-2 py-1 rounded ${
+                                       opportunity.tradeType === 'long' ? 'bg-green-100 text-green-800' :
+                                       opportunity.tradeType === 'short' ? 'bg-red-100 text-red-800' :
+                                       'bg-gray-100 text-gray-800'
+                                     }`}>
+                                       {opportunity.tradeType.toUpperCase()}
+                                     </span>
+                                   </div>
+                                   <div className="text-xs text-muted-foreground space-y-1">
+                                     <div>Confidence: {opportunity.confidence}%</div>
+                                     <div>Entry: {opportunity.entryPrice || 'N/A'}</div>
+                                     <div>TP: {opportunity.takeProfit?.join(', ') || 'N/A'}</div>
+                                     <div>SL: {opportunity.stopLoss || 'N/A'}</div>
+                                     <div className="text-xs">
+                                       {opportunity.timestamp.toLocaleTimeString()}
+                                     </div>
+                                   </div>
+                                 </div>
+                               ))}
+                             </div>
+                           </CardContent>
+                         </Card>
+                       )}
+                       {tradeUpdates.length > 0 && (
+                         <Card>
+                           <CardHeader>
+                             <CardTitle className="flex items-center gap-2">
+                               <TrendingUp className="h-5 w-5 text-blue-500" />
+                               Recent Trade Updates
+                             </CardTitle>
+                           </CardHeader>
+                           <CardContent>
+                             <div className="space-y-3">
+                               {tradeUpdates.slice(-3).map((update, index) => (
+                                 <div key={index} className="p-3 rounded-lg border bg-muted/30">
+                                   <div className="flex items-center justify-between mb-2">
+                                     <span className="font-semibold text-sm">
+                                       {update.recommendation.toUpperCase().replace('_', ' ')}
+                                     </span>
+                                     <span className={`text-xs px-2 py-1 rounded ${
+                                       update.urgency === 'immediate' ? 'bg-red-100 text-red-800' :
+                                       update.urgency === 'high' ? 'bg-orange-100 text-orange-800' :
+                                       update.urgency === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                       'bg-green-100 text-green-800'
+                                     }`}>
+                                       {update.urgency.toUpperCase()}
+                                     </span>
+                                   </div>
+                                   <div className="text-xs text-muted-foreground space-y-1">
+                                     <div>P&L: {update.profitLoss}</div>
+                                     <div>Risk: {update.riskLevel.toUpperCase()}</div>
+                                     <div>Status: {update.positionStatus.toUpperCase()}</div>
+                                     <div className="text-xs">
+                                       {update.timestamp.toLocaleTimeString()}
+                                     </div>
+                                   </div>
+                                 </div>
+                               ))}
+                             </div>
+                           </CardContent>
+                         </Card>
+                       )}
                       <Card className="flex-1 flex items-center justify-center">
                         <div className="text-center text-muted-foreground">
                             <Wand2 className="mx-auto h-12 w-12" />

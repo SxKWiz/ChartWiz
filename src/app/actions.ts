@@ -6,6 +6,7 @@ import { textChat, type TextChatOutput } from '@/ai/flows/text-chat-flow';
 import { summarizeChatHistory, type SummarizeChatHistoryOutput } from '@/ai/flows/summarize-chat-history';
 import { scanForPatterns, type ScanForPatternsOutput } from '@/ai/flows/scan-for-patterns-flow';
 import { intelligentTradeDetector, type IntelligentTradeDetectorInput, type IntelligentTradeDetectorOutput } from '@/ai/flows/intelligent-trade-detector';
+import { monitorActiveTrade, type TradeMonitorInput, type TradeMonitorOutput } from '@/ai/flows/trade-monitor';
 import { comprehensiveAIBrain, type ComprehensiveAnalysisInput, type ComprehensiveAnalysisOutput } from '@/ai/flows/comprehensive-ai-brain';
 import { enhancedMarketAnalysis, type EnhancedMarketAnalysisInput, type EnhancedMarketAnalysisOutput } from '@/ai/flows/enhanced-market-analysis';
 import { marketSentimentAnalysis, type MarketSentimentAnalysisInput, type MarketSentimentAnalysisOutput } from '@/ai/flows/market-sentiment-analyzer';
@@ -247,6 +248,37 @@ export async function detectTradeOpportunity(chartImageUri: string, previousAnal
       screenshotAnalysis: 'Unable to analyze chart due to error.',
       recommendation: 'Please try again or check your connection.',
       nextScanIn: 30,
+    };
+  }
+}
+
+export async function monitorTradeProgress(chartImageUri: string, activeTrade: any, previousUpdate?: string): Promise<TradeMonitorOutput> {
+  try {
+    const input: TradeMonitorInput = {
+      chartImageUri,
+      activeTrade,
+      previousUpdate,
+    };
+    const result = await monitorActiveTrade(input);
+    return result;
+  } catch (e) {
+    console.error('Trade monitoring failed:', e);
+    // Return a safe default response
+    return {
+      tradeUpdate: {
+        currentPrice: 'N/A',
+        priceChange: 'N/A',
+        profitLoss: 'N/A',
+        riskLevel: 'medium',
+        positionStatus: 'breakeven',
+        stopLossDistance: 'N/A',
+        takeProfitProgress: [],
+        recommendation: 'hold',
+        reasoning: 'Monitoring failed due to technical error.',
+        urgency: 'low',
+      },
+      marketAnalysis: 'Unable to analyze trade progress due to error.',
+      nextUpdateIn: 30,
     };
   }
 }
