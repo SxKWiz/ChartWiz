@@ -352,6 +352,11 @@ export default function SharePage() {
 
   // AI Trade Detection Functions
   const runTradeDetection = useCallback(async () => {
+    // Guard: If monitoring is active, do not detect new trades
+    if (isMonitoringActiveTrade) {
+      setTradeDetectorStatus('Trade monitoring active - detection paused');
+      return;
+    }
     setTradeDetectorStatus('Analyzing...');
     const frame = captureFrame();
     if (!frame) {
@@ -364,6 +369,9 @@ export default function SharePage() {
         setLastTradeDetectionTime(new Date());
 
         if (result.tradeOpportunity.opportunityFound && !isMonitoringActiveTrade) {
+            // Stop trade detection before any state changes
+            stopTradeDetection();
+            
             const opportunity = {
                 ...result.tradeOpportunity,
                 timestamp: new Date(),
@@ -435,8 +443,7 @@ export default function SharePage() {
             
             setActiveTrade(activeTradeData);
             
-            // Stop trade detection and start monitoring
-            stopTradeDetection();
+            // Start monitoring after detection is stopped
             startTradeMonitoring();
             
         } else if (isMonitoringActiveTrade) {
@@ -460,7 +467,7 @@ export default function SharePage() {
             variant: 'destructive',
         });
     }
-  }, [captureFrame, previousAnalysis, scanMode, toast, tradeDetectionInterval]);
+  }, [captureFrame, previousAnalysis, scanMode, toast, tradeDetectionInterval, isMonitoringActiveTrade, stopTradeDetection, startTradeMonitoring]);
 
   const startTradeDetection = useCallback(() => {
     setIsTradeDetecting(true);
