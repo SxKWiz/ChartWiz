@@ -19,11 +19,11 @@ import {
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
-import { Loader2, Mic, MonitorPlay, Wand2, X, Camera, Image as ImageIcon, Sparkles, ScanLine, AlertCircle } from 'lucide-react';
+import { Loader2, Mic, MonitorPlay, Wand2, X, Camera, Image as ImageIcon, Sparkles, ScanLine, AlertCircle, Target, Brain, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { analyzeChartImage } from '@/ai/flows/analyze-chart-image';
 import { textToSpeech } from '@/ai/flows/text-to-speech-flow';
-import { scanScreenForPatterns } from '@/app/actions';
+import { scanScreenForPatterns, detectTradeOpportunity } from '@/app/actions';
 import { ChatMessages } from '@/components/chat/chat-messages';
 import type { Message } from '@/lib/types';
 import { nanoid } from 'nanoid';
@@ -46,6 +46,15 @@ export default function SharePage() {
   const [lastScanTime, setLastScanTime] = useState<Date | null>(null);
   const [scannerStatus, setScannerStatus] = useState('Idle');
 
+  // AI Trade Detector state
+  const [isTradeDetecting, setIsTradeDetecting] = useState(false);
+  const [tradeDetectionInterval, setTradeDetectionInterval] = useState(15); // in seconds
+  const [lastTradeDetectionTime, setLastTradeDetectionTime] = useState<Date | null>(null);
+  const [tradeDetectorStatus, setTradeDetectorStatus] = useState('Idle');
+  const [previousAnalysis, setPreviousAnalysis] = useState<string>('');
+  const [tradeOpportunities, setTradeOpportunities] = useState<any[]>([]);
+  const [scanMode, setScanMode] = useState<'light' | 'detailed'>('light');
+
 
   const [chart1, setChart1] = useState<string | null>(null);
   const [chart2, setChart2] = useState<string | null>(null);
@@ -53,6 +62,7 @@ export default function SharePage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const recognitionRef = useRef<any>(null);
   const scannerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const tradeDetectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
   const captureFrame = useCallback((setter?: (dataUri: string) => void) => {
@@ -163,7 +173,7 @@ export default function SharePage() {
   
   useEffect(() => {
     if (typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = true;
@@ -180,14 +190,14 @@ export default function SharePage() {
         }
       };
       
-      recognition.onerror = (event) => {
+      recognition.onerror = (event: any) => {
         if (event.error !== 'no-speech') {
             toast({ title: "Voice Recognition Error", description: event.error, variant: 'destructive' });
         }
         setIsListening(false);
       };
 
-      recognition.onresult = (event) => {
+      recognition.onresult = (event: any) => {
         let finalTranscript = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
@@ -279,6 +289,7 @@ export default function SharePage() {
     setIsSharing(false);
     if (isHandsFreeMode) handleHandsFreeToggle(false);
     if (isScanning) stopScanning();
+    if (isTradeDetecting) stopTradeDetection();
   };
   
 
@@ -329,10 +340,129 @@ export default function SharePage() {
     toast({ title: "Scanner Deactivated" });
   }, [toast]);
 
+  // AI Trade Detection Functions
+  const runTradeDetection = useCallback(async () => {
+    setTradeDetectorStatus('Analyzing...');
+    const frame = captureFrame();
+    if (!frame) {
+        setTradeDetectorStatus('Error: Could not capture screen.');
+        return;
+    }
+
+    try {
+        const result = await detectTradeOpportunity(frame, previousAnalysis, scanMode);
+        setLastTradeDetectionTime(new Date());
+
+        if (result.tradeOpportunity.opportunityFound) {
+            const opportunity = {
+                ...result.tradeOpportunity,
+                timestamp: new Date(),
+                screenshot: frame,
+                analysis: result.screenshotAnalysis,
+                recommendation: result.recommendation,
+            };
+            
+            setTradeOpportunities(prev => [opportunity, ...prev.slice(0, 4)]); // Keep last 5 opportunities
+            
+            // Create a message for the chat
+            const userMessage: Message = {
+                id: nanoid(),
+                role: 'user',
+                content: `AI detected a trade opportunity: ${result.tradeOpportunity.patternName || 'Pattern'}`,
+                imagePreviews: [frame],
+            };
+            
+            const assistantMessage: Message = {
+                id: nanoid(),
+                role: 'assistant',
+                content: `🚨 **TRADE OPPORTUNITY DETECTED!** 🚨
+
+**Pattern:** ${result.tradeOpportunity.patternName || 'Technical Pattern'}
+**Type:** ${result.tradeOpportunity.tradeType.toUpperCase()}
+**Confidence:** ${result.tradeOpportunity.confidence}%
+**Urgency:** ${result.tradeOpportunity.urgency.toUpperCase()}
+
+**Entry Price:** ${result.tradeOpportunity.entryPrice || 'N/A'}
+**Take Profit:** ${result.tradeOpportunity.takeProfit?.join(', ') || 'N/A'}
+**Stop Loss:** ${result.tradeOpportunity.stopLoss || 'N/A'}
+**Risk/Reward:** ${result.tradeOpportunity.riskRewardRatio || 'N/A'}
+
+**Reasoning:** ${result.tradeOpportunity.reasoning}
+
+**Recommendation:** ${result.recommendation}
+
+**Key Levels:** ${result.tradeOpportunity.keyLevels?.join(', ') || 'N/A'}
+**Volume Analysis:** ${result.tradeOpportunity.volumeAnalysis || 'N/A'}`,
+                recommendation: result.tradeOpportunity.entryPrice ? {
+                    entryPrice: { value: result.tradeOpportunity.entryPrice, reason: result.tradeOpportunity.reasoning },
+                    takeProfit: result.tradeOpportunity.takeProfit?.map(tp => ({ value: tp, reason: 'Take profit target' })) || [],
+                    stopLoss: { value: result.tradeOpportunity.stopLoss || 'N/A', reason: 'Stop loss level' },
+                    riskRewardRatio: result.tradeOpportunity.riskRewardRatio,
+                } : undefined,
+            };
+            
+            setAnalysisResult(prev => [...prev, userMessage, assistantMessage]);
+            setPreviousAnalysis(result.screenshotAnalysis);
+            
+            toast({
+                title: `🎯 Trade Opportunity Found!`,
+                description: `${result.tradeOpportunity.tradeType.toUpperCase()} - ${result.tradeOpportunity.patternName || 'Pattern'} (${result.tradeOpportunity.confidence}% confidence)`,
+                duration: 10000,
+            });
+            
+            setTradeDetectorStatus(`Opportunity Found: ${result.tradeOpportunity.patternName}`);
+            
+            // Switch to detailed mode for next scan
+            setScanMode('detailed');
+        } else {
+            setTradeDetectorStatus('No trade opportunities found. Continuing to monitor...');
+            setScanMode('light'); // Switch back to light mode
+        }
+        
+        // Update scan interval based on AI recommendation
+        if (result.nextScanIn !== tradeDetectionInterval) {
+            setTradeDetectionInterval(result.nextScanIn);
+        }
+        
+    } catch (error) {
+        console.error('Trade detection failed:', error);
+        setTradeDetectorStatus('Error: Trade detection failed.');
+        toast({
+            title: 'Trade Detection Error',
+            description: 'Failed to analyze chart for trade opportunities.',
+            variant: 'destructive',
+        });
+    }
+  }, [captureFrame, previousAnalysis, scanMode, toast, tradeDetectionInterval]);
+
+  const startTradeDetection = useCallback(() => {
+    setIsTradeDetecting(true);
+    setTradeDetectorStatus('Starting...');
+    toast({ title: "AI Trade Detector Activated", description: `Will scan every ${tradeDetectionInterval} seconds for perfect entry opportunities.`});
+    
+    // Run first detection immediately
+    runTradeDetection();
+
+    tradeDetectionIntervalRef.current = setInterval(runTradeDetection, tradeDetectionInterval * 1000);
+  }, [tradeDetectionInterval, toast, runTradeDetection]);
+
+  const stopTradeDetection = useCallback(() => {
+    setIsTradeDetecting(false);
+    setTradeDetectorStatus('Idle');
+    if (tradeDetectionIntervalRef.current) {
+        clearInterval(tradeDetectionIntervalRef.current);
+        tradeDetectionIntervalRef.current = null;
+    }
+    toast({ title: "AI Trade Detector Deactivated" });
+  }, [toast]);
+
   useEffect(() => {
     return () => {
         if (scannerIntervalRef.current) {
             clearInterval(scannerIntervalRef.current);
+        }
+        if (tradeDetectionIntervalRef.current) {
+            clearInterval(tradeDetectionIntervalRef.current);
         }
     }
   }, []);
@@ -370,7 +500,7 @@ export default function SharePage() {
                       <span>Close</span>
                   </Link>
             </Button>
-            <h1 className="text-xl font-semibold ml-4">Live Screen Analysis</h1>
+            <h1 className="text-xl font-semibold ml-4">AI-Powered Live Analysis</h1>
           </header>
           <main className="flex-1 p-4 md:p-6 overflow-y-auto">
             <div className="grid gap-6 lg:grid-cols-2">
@@ -378,7 +508,7 @@ export default function SharePage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Screen Control</CardTitle>
-                    <CardDescription>Share your screen to begin capturing charts for analysis or scanning.</CardDescription>
+                    <CardDescription>Share your screen to enable AI-powered trade detection and chart analysis.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {!isSharing ? (
@@ -420,7 +550,56 @@ export default function SharePage() {
                   <>
                     <Card>
                         <CardHeader>
-                            <CardTitle>Automated Pattern Scanner</CardTitle>
+                            <CardTitle className="flex items-center gap-2">
+                                <Brain className="h-5 w-5 text-blue-500" />
+                                AI Trade Detector
+                            </CardTitle>
+                            <CardDescription>Intelligent AI constantly monitors your screen for perfect entry opportunities with minimal token usage.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                           <div className="space-y-2">
+                                <Label htmlFor='trade-detection-interval'>Detection Frequency: {tradeDetectionInterval} seconds</Label>
+                                <Slider 
+                                    id="trade-detection-interval"
+                                    min={10}
+                                    max={60}
+                                    step={5}
+                                    value={[tradeDetectionInterval]}
+                                    onValueChange={(value) => setTradeDetectionInterval(value[0])}
+                                    disabled={isTradeDetecting}
+                                />
+                           </div>
+                           <div className="flex items-center space-x-2">
+                                <Switch
+                                    id="scan-mode"
+                                    checked={scanMode === 'detailed'}
+                                    onCheckedChange={(checked) => setScanMode(checked ? 'detailed' : 'light')}
+                                    disabled={isTradeDetecting}
+                                />
+                                <Label htmlFor="scan-mode" className="flex items-center gap-2">
+                                    <Zap className="h-4 w-4" />
+                                    Detailed Analysis Mode
+                                </Label>
+                           </div>
+                           <Button onClick={isTradeDetecting ? stopTradeDetection : startTradeDetection} className="w-full" variant={isTradeDetecting ? "secondary" : "default"}>
+                                {isTradeDetecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Target className="mr-2 h-4 w-4" />}
+                                {isTradeDetecting ? 'Stop AI Detection' : 'Start AI Detection'}
+                           </Button>
+                           <div className="text-xs text-muted-foreground p-2 rounded-md bg-muted/50 border flex items-center gap-2">
+                                <AlertCircle className="h-4 w-4"/>
+                                <div>
+                                    <span className='font-semibold'>Status:</span> {tradeDetectorStatus} <br/>
+                                    <span className='font-semibold'>Last Detection:</span> {lastTradeDetectionTime ? lastTradeDetectionTime.toLocaleTimeString() : 'N/A'}
+                                </div>
+                           </div>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <ScanLine className="h-5 w-5 text-green-500" />
+                                Pattern Scanner
+                            </CardTitle>
                             <CardDescription>Proactively scan your screen for high-probability trading patterns.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
@@ -510,15 +689,56 @@ export default function SharePage() {
                       />
                     </div>
                   ) : (
-                    <Card className="flex-1 flex items-center justify-center">
-                      <div className="text-center text-muted-foreground">
-                          <Wand2 className="mx-auto h-12 w-12" />
-                          <h3 className="mt-4 text-lg font-semibold">Analysis will appear here</h3>
-                          <p className="mt-2 text-sm">
-                            Use the scanner for automatic alerts or capture charts manually to begin.
-                          </p>
-                      </div>
-                    </Card>
+                    <div className="flex-1 flex flex-col gap-4">
+                      {tradeOpportunities.length > 0 && (
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                              <Target className="h-5 w-5 text-orange-500" />
+                              Recent Trade Opportunities
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-3">
+                              {tradeOpportunities.slice(0, 3).map((opportunity, index) => (
+                                <div key={index} className="p-3 rounded-lg border bg-muted/30">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="font-semibold text-sm">
+                                      {opportunity.patternName || 'Pattern'}
+                                    </span>
+                                    <span className={`text-xs px-2 py-1 rounded ${
+                                      opportunity.tradeType === 'long' ? 'bg-green-100 text-green-800' :
+                                      opportunity.tradeType === 'short' ? 'bg-red-100 text-red-800' :
+                                      'bg-gray-100 text-gray-800'
+                                    }`}>
+                                      {opportunity.tradeType.toUpperCase()}
+                                    </span>
+                                  </div>
+                                  <div className="text-xs text-muted-foreground space-y-1">
+                                    <div>Confidence: {opportunity.confidence}%</div>
+                                    <div>Entry: {opportunity.entryPrice || 'N/A'}</div>
+                                    <div>TP: {opportunity.takeProfit?.join(', ') || 'N/A'}</div>
+                                    <div>SL: {opportunity.stopLoss || 'N/A'}</div>
+                                    <div className="text-xs">
+                                      {opportunity.timestamp.toLocaleTimeString()}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
+                      <Card className="flex-1 flex items-center justify-center">
+                        <div className="text-center text-muted-foreground">
+                            <Wand2 className="mx-auto h-12 w-12" />
+                            <h3 className="mt-4 text-lg font-semibold">Analysis will appear here</h3>
+                            <p className="mt-2 text-sm">
+                              Use the AI Trade Detector for automatic alerts or capture charts manually to begin.
+                            </p>
+                        </div>
+                      </Card>
+                    </div>
                   )}
               </div>
             </div>
