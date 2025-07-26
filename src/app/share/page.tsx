@@ -460,6 +460,18 @@ ${result.tradeUpdate.takeProfitProgress.map(tp => `- ${tp.target}: ${tp.progress
     tradeMonitoringIntervalRef.current = setInterval(runTradeMonitoring, tradeUpdateInterval * 1000);
   }, [tradeUpdateInterval, toast, activeTrade]);
 
+  const stopTradeMonitoring = useCallback(() => {
+    setIsMonitoringActiveTrade(false);
+    setTradeMonitoringStatus('Idle');
+    setActiveTrade(null);
+    setTradeUpdates([]);
+    if (tradeMonitoringIntervalRef.current) {
+        clearInterval(tradeMonitoringIntervalRef.current);
+        tradeMonitoringIntervalRef.current = null;
+    }
+    toast({ title: "Trade Monitoring Stopped" });
+  }, [toast]);
+
   // AI Trade Detection Functions
   const runTradeDetection = useCallback(async () => {
     // Guard: If monitoring is active, do not detect new trades
