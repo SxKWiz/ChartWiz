@@ -350,6 +350,19 @@ export default function SharePage() {
     toast({ title: "Scanner Deactivated" });
   }, [toast]);
 
+  const startTradeMonitoring = useCallback(() => {
+    if (!activeTrade) return;
+    
+    setIsMonitoringActiveTrade(true);
+    setTradeMonitoringStatus('Starting trade monitoring...');
+    toast({ title: "Trade Monitoring Activated", description: `Monitoring trade every ${tradeUpdateInterval} seconds.`});
+    
+    // Run first monitoring immediately
+    runTradeMonitoring();
+
+    tradeMonitoringIntervalRef.current = setInterval(runTradeMonitoring, tradeUpdateInterval * 1000);
+  }, [tradeUpdateInterval, toast, runTradeMonitoring, activeTrade]);
+
   // AI Trade Detection Functions
   const runTradeDetection = useCallback(async () => {
     // Guard: If monitoring is active, do not detect new trades
@@ -576,19 +589,6 @@ ${result.tradeUpdate.takeProfitProgress.map(tp => `- ${tp.target}: ${tp.progress
         });
     }
   }, [captureFrame, activeTrade, tradeUpdates, toast, tradeUpdateInterval]);
-
-  const startTradeMonitoring = useCallback(() => {
-    if (!activeTrade) return;
-    
-    setIsMonitoringActiveTrade(true);
-    setTradeMonitoringStatus('Starting trade monitoring...');
-    toast({ title: "Trade Monitoring Activated", description: `Monitoring trade every ${tradeUpdateInterval} seconds.`});
-    
-    // Run first monitoring immediately
-    runTradeMonitoring();
-
-    tradeMonitoringIntervalRef.current = setInterval(runTradeMonitoring, tradeUpdateInterval * 1000);
-  }, [tradeUpdateInterval, toast, runTradeMonitoring, activeTrade]);
 
   const stopTradeMonitoring = useCallback(() => {
     setIsMonitoringActiveTrade(false);
