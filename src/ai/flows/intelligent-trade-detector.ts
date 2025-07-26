@@ -138,10 +138,7 @@ const intelligentTradeDetectorPrompt = ai.definePrompt({
 
 Analyze the following live chart screenshot:
 
-Chart Image: {{media url=chartImageUri}}
-
-Previous Analysis Context: {{previousAnalysis || "None"}}
-Scan Mode: {{scanMode}}`,
+Chart Image: {{media url=chartImageUri}}`,
 });
 
 const intelligentTradeDetectorFlow = ai.defineFlow(

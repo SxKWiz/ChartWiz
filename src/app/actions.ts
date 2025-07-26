@@ -228,7 +228,7 @@ export async function detectTradeOpportunity(chartImageUri: string, previousAnal
   try {
     const input: IntelligentTradeDetectorInput = {
       chartImageUri,
-      previousAnalysis,
+      previousAnalysis: previousAnalysis || 'No previous analysis available',
       scanMode,
     };
     const result = await intelligentTradeDetector(input);
