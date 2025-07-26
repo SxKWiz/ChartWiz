@@ -350,7 +350,17 @@ export default function SharePage() {
     toast({ title: "Scanner Deactivated" });
   }, [toast]);
 
-  // Trade Monitoring Functions
+  // Trade Monitoring and Detection Callbacks (order matters!)
+  const stopTradeDetection = useCallback(() => {
+    setIsTradeDetecting(false);
+    setTradeDetectorStatus('Idle');
+    if (tradeDetectionIntervalRef.current) {
+        clearInterval(tradeDetectionIntervalRef.current);
+        tradeDetectionIntervalRef.current = null;
+    }
+    toast({ title: "AI Trade Detector Deactivated" });
+  }, [toast]);
+
   const runTradeMonitoring = useCallback(async () => {
     if (!activeTrade) return;
     
@@ -579,16 +589,6 @@ ${result.tradeUpdate.takeProfitProgress.map(tp => `- ${tp.target}: ${tp.progress
 
     tradeDetectionIntervalRef.current = setInterval(runTradeDetection, tradeDetectionInterval * 1000);
   }, [tradeDetectionInterval, toast, runTradeDetection]);
-
-  const stopTradeDetection = useCallback(() => {
-    setIsTradeDetecting(false);
-    setTradeDetectorStatus('Idle');
-    if (tradeDetectionIntervalRef.current) {
-        clearInterval(tradeDetectionIntervalRef.current);
-        tradeDetectionIntervalRef.current = null;
-    }
-    toast({ title: "AI Trade Detector Deactivated" });
-  }, [toast]);
 
   useEffect(() => {
     return () => {
