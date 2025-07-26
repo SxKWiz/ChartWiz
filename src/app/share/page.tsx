@@ -350,6 +350,93 @@ export default function SharePage() {
     toast({ title: "Scanner Deactivated" });
   }, [toast]);
 
+  // Trade Monitoring Functions
+  const runTradeMonitoring = useCallback(async () => {
+    if (!activeTrade) return;
+    
+    setTradeMonitoringStatus('Analyzing trade progress...');
+    const frame = captureFrame();
+    if (!frame) {
+        setTradeMonitoringStatus('Error: Could not capture screen.');
+        return;
+    }
+
+    try {
+        const result = await monitorTradeProgress(frame, activeTrade, tradeUpdates.length > 0 ? tradeUpdates[tradeUpdates.length - 1].marketAnalysis : undefined);
+        setLastTradeUpdateTime(new Date());
+
+        const update = {
+            ...result.tradeUpdate,
+            timestamp: new Date(),
+            screenshot: frame,
+            marketAnalysis: result.marketAnalysis,
+        };
+        
+        setTradeUpdates(prev => [...prev, update]);
+        
+        // Create a message for the chat
+        const userMessage: Message = {
+            id: nanoid(),
+            role: 'user',
+            content: `Trade monitoring update: ${result.tradeUpdate.recommendation}`,
+            imagePreviews: [frame],
+        };
+        
+        const assistantMessage: Message = {
+            id: nanoid(),
+            role: 'assistant',
+            content: `📊 **TRADE UPDATE** 📊
+
+**Current Price:** ${result.tradeUpdate.currentPrice}
+**Price Change:** ${result.tradeUpdate.priceChange}
+**P&L:** ${result.tradeUpdate.profitLoss}
+**Risk Level:** ${result.tradeUpdate.riskLevel.toUpperCase()}
+**Position Status:** ${result.tradeUpdate.positionStatus.toUpperCase()}
+**Stop Loss Distance:** ${result.tradeUpdate.stopLossDistance}
+
+**Take Profit Progress:**
+${result.tradeUpdate.takeProfitProgress.map(tp => `- ${tp.target}: ${tp.progress} (${tp.distance} away)`).join('\n')}
+
+**Recommendation:** ${result.tradeUpdate.recommendation.toUpperCase().replace('_', ' ')}
+**Urgency:** ${result.tradeUpdate.urgency.toUpperCase()}
+
+**Reasoning:** ${result.tradeUpdate.reasoning}
+
+**Market Analysis:** ${result.marketAnalysis}
+
+**Key Levels:** ${result.tradeUpdate.keyLevels?.join(', ') || 'N/A'}
+**Volume Analysis:** ${result.tradeUpdate.volumeAnalysis || 'N/A'}`,
+        };
+        
+        setAnalysisResult(prev => [...prev, userMessage, assistantMessage]);
+        
+        // Show toast for urgent updates
+        if (result.tradeUpdate.urgency === 'immediate' || result.tradeUpdate.urgency === 'high') {
+            toast({
+                title: `🚨 Trade Update: ${result.tradeUpdate.recommendation.toUpperCase().replace('_', ' ')}`,
+                description: `${result.tradeUpdate.reasoning}`,
+                duration: 10000,
+            });
+        }
+        
+        setTradeMonitoringStatus(`Last Update: ${new Date().toLocaleTimeString()}`);
+        
+        // Update monitoring interval based on AI recommendation
+        if (result.nextUpdateIn !== tradeUpdateInterval) {
+            setTradeUpdateInterval(result.nextUpdateIn);
+        }
+        
+    } catch (error) {
+        console.error('Trade monitoring failed:', error);
+        setTradeMonitoringStatus('Error: Trade monitoring failed.');
+        toast({
+            title: 'Trade Monitoring Error',
+            description: 'Failed to analyze trade progress.',
+            variant: 'destructive',
+        });
+    }
+  }, [captureFrame, activeTrade, tradeUpdates, toast, tradeUpdateInterval]);
+
   const startTradeMonitoring = useCallback(() => {
     if (!activeTrade) return;
     
@@ -361,7 +448,7 @@ export default function SharePage() {
     runTradeMonitoring();
 
     tradeMonitoringIntervalRef.current = setInterval(runTradeMonitoring, tradeUpdateInterval * 1000);
-  }, [tradeUpdateInterval, toast, runTradeMonitoring, activeTrade]);
+  }, [tradeUpdateInterval, toast, activeTrade]);
 
   // AI Trade Detection Functions
   const runTradeDetection = useCallback(async () => {
@@ -501,105 +588,6 @@ export default function SharePage() {
         tradeDetectionIntervalRef.current = null;
     }
     toast({ title: "AI Trade Detector Deactivated" });
-  }, [toast]);
-
-  // Trade Monitoring Functions
-  const runTradeMonitoring = useCallback(async () => {
-    if (!activeTrade) return;
-    
-    setTradeMonitoringStatus('Analyzing trade progress...');
-    const frame = captureFrame();
-    if (!frame) {
-        setTradeMonitoringStatus('Error: Could not capture screen.');
-        return;
-    }
-
-    try {
-        const result = await monitorTradeProgress(frame, activeTrade, tradeUpdates.length > 0 ? tradeUpdates[tradeUpdates.length - 1].marketAnalysis : undefined);
-        setLastTradeUpdateTime(new Date());
-
-        const update = {
-            ...result.tradeUpdate,
-            timestamp: new Date(),
-            screenshot: frame,
-            marketAnalysis: result.marketAnalysis,
-        };
-        
-        setTradeUpdates(prev => [...prev, update]);
-        
-        // Create a message for the chat
-        const userMessage: Message = {
-            id: nanoid(),
-            role: 'user',
-            content: `Trade monitoring update: ${result.tradeUpdate.recommendation}`,
-            imagePreviews: [frame],
-        };
-        
-        const assistantMessage: Message = {
-            id: nanoid(),
-            role: 'assistant',
-            content: `📊 **TRADE UPDATE** 📊
-
-**Current Price:** ${result.tradeUpdate.currentPrice}
-**Price Change:** ${result.tradeUpdate.priceChange}
-**P&L:** ${result.tradeUpdate.profitLoss}
-**Risk Level:** ${result.tradeUpdate.riskLevel.toUpperCase()}
-**Position Status:** ${result.tradeUpdate.positionStatus.toUpperCase()}
-**Stop Loss Distance:** ${result.tradeUpdate.stopLossDistance}
-
-**Take Profit Progress:**
-${result.tradeUpdate.takeProfitProgress.map(tp => `- ${tp.target}: ${tp.progress} (${tp.distance} away)`).join('\n')}
-
-**Recommendation:** ${result.tradeUpdate.recommendation.toUpperCase().replace('_', ' ')}
-**Urgency:** ${result.tradeUpdate.urgency.toUpperCase()}
-
-**Reasoning:** ${result.tradeUpdate.reasoning}
-
-**Market Analysis:** ${result.marketAnalysis}
-
-**Key Levels:** ${result.tradeUpdate.keyLevels?.join(', ') || 'N/A'}
-**Volume Analysis:** ${result.tradeUpdate.volumeAnalysis || 'N/A'}`,
-        };
-        
-        setAnalysisResult(prev => [...prev, userMessage, assistantMessage]);
-        
-        // Show toast for urgent updates
-        if (result.tradeUpdate.urgency === 'immediate' || result.tradeUpdate.urgency === 'high') {
-            toast({
-                title: `🚨 Trade Update: ${result.tradeUpdate.recommendation.toUpperCase().replace('_', ' ')}`,
-                description: `${result.tradeUpdate.reasoning}`,
-                duration: 10000,
-            });
-        }
-        
-        setTradeMonitoringStatus(`Last Update: ${new Date().toLocaleTimeString()}`);
-        
-        // Update monitoring interval based on AI recommendation
-        if (result.nextUpdateIn !== tradeUpdateInterval) {
-            setTradeUpdateInterval(result.nextUpdateIn);
-        }
-        
-    } catch (error) {
-        console.error('Trade monitoring failed:', error);
-        setTradeMonitoringStatus('Error: Trade monitoring failed.');
-        toast({
-            title: 'Trade Monitoring Error',
-            description: 'Failed to analyze trade progress.',
-            variant: 'destructive',
-        });
-    }
-  }, [captureFrame, activeTrade, tradeUpdates, toast, tradeUpdateInterval]);
-
-  const stopTradeMonitoring = useCallback(() => {
-    setIsMonitoringActiveTrade(false);
-    setTradeMonitoringStatus('Idle');
-    setActiveTrade(null);
-    setTradeUpdates([]);
-    if (tradeMonitoringIntervalRef.current) {
-        clearInterval(tradeMonitoringIntervalRef.current);
-        tradeMonitoringIntervalRef.current = null;
-    }
-    toast({ title: "Trade Monitoring Stopped" });
   }, [toast]);
 
   useEffect(() => {
