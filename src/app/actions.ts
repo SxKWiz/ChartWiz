@@ -257,7 +257,7 @@ export async function monitorTradeProgress(chartImageUri: string, activeTrade: a
     const input: TradeMonitorInput = {
       chartImageUri,
       activeTrade,
-      previousUpdate,
+      previousUpdate: previousUpdate || 'No previous update available',
     };
     const result = await monitorActiveTrade(input);
     return result;

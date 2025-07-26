@@ -143,7 +143,7 @@ Original Reasoning: {{activeTrade.reasoning}}
 - Keep updates concise but informative
 
 **Previous Update Context:**
-{{previousUpdate || "No previous update available"}}
+{{previousUpdate}}
 
 Analyze the following live chart for trade updates:
 
