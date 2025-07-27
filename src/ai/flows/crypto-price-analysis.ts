@@ -58,52 +58,69 @@ export async function cryptoPriceAnalysis(input: CryptoPriceQueryInput): Promise
     if (!symbolsToAnalyze.length) {
       // Common crypto symbols to look for in the query
       const commonSymbols = ['BTC', 'ETH', 'BNB', 'ADA', 'SOL', 'DOT', 'AVAX', 'MATIC', 'LINK', 'UNI'];
-      symbolsToAnalyze = commonSymbols.filter(symbol => 
+      const detectedSymbols = commonSymbols.filter(symbol => 
         lowerQuery.includes(symbol.toLowerCase()) || 
         lowerQuery.includes(symbol.toLowerCase().replace('usdt', ''))
       );
+      // Convert to proper Binance trading pairs
+      symbolsToAnalyze = detectedSymbols.map(symbol => `${symbol}USDT`);
     }
 
     // Handle different types of queries
     if (lowerQuery.includes('price') || lowerQuery.includes('current') || symbolsToAnalyze.length > 0) {
       // Get specific price data
       if (symbolsToAnalyze.length > 0) {
-        priceData = await binanceAPI.getPrices(symbolsToAnalyze);
+        try {
+          priceData = await binanceAPI.getPrices(symbolsToAnalyze);
+        } catch (error) {
+          console.error('Error fetching specific prices:', error);
+          // Continue with other analysis even if specific prices fail
+        }
       }
     }
 
     if (lowerQuery.includes('market') || lowerQuery.includes('trend') || lowerQuery.includes('sentiment')) {
       // Get market insights
-      const markets = await binanceAPI.getUSDTMarkets();
-      const totalVolume = markets.reduce((sum, market) => sum + parseFloat(market.volume24h), 0);
-      const avgChange = markets.reduce((sum, market) => sum + parseFloat(market.priceChangePercent24h), 0) / markets.length;
-      
-      marketInsights = {
-        overallSentiment: avgChange > 2 ? 'bullish' : avgChange < -2 ? 'bearish' : 'neutral',
-        keyTrends: [
-          `Average 24h change: ${avgChange.toFixed(2)}%`,
-          `Total 24h volume: $${(totalVolume / 1e9).toFixed(2)}B`,
-          `Active pairs: ${markets.length}`
-        ],
-        recommendations: generateRecommendations(avgChange, markets)
-      };
+      try {
+        const markets = await binanceAPI.getUSDTMarkets();
+        const totalVolume = markets.reduce((sum, market) => sum + parseFloat(market.volume24h), 0);
+        const avgChange = markets.reduce((sum, market) => sum + parseFloat(market.priceChangePercent24h), 0) / markets.length;
+        
+        marketInsights = {
+          overallSentiment: avgChange > 2 ? 'bullish' : avgChange < -2 ? 'bearish' : 'neutral',
+          keyTrends: [
+            `Average 24h change: ${avgChange.toFixed(2)}%`,
+            `Total 24h volume: $${(totalVolume / 1e9).toFixed(2)}B`,
+            `Active pairs: ${markets.length}`
+          ],
+          recommendations: generateRecommendations(avgChange, markets)
+        };
+      } catch (error) {
+        console.error('Error fetching market insights:', error);
+        // Continue without market insights
+      }
     }
 
     if (lowerQuery.includes('top') || lowerQuery.includes('gainer') || lowerQuery.includes('loser') || lowerQuery.includes('mover')) {
       // Get top movers
-      const movers = await binanceAPI.getTopMovers();
-      topMovers = {
-        gainers: movers.gainers.map(m => ({
-          symbol: m.baseAsset,
-          price: binanceAPI.formatPrice(m.price, m.symbol),
-          change: binanceAPI.formatPercentageChange(m.priceChangePercent24h).text
-        })),
-        losers: movers.losers.map(m => ({
-          symbol: m.baseAsset,
-          price: binanceAPI.formatPrice(m.price, m.symbol),
-          change: binanceAPI.formatPercentageChange(m.priceChangePercent24h).text
-        }))
-      };
+      try {
+        const movers = await binanceAPI.getTopMovers();
+        topMovers = {
+          gainers: movers.gainers.map(m => ({
+            symbol: m.baseAsset,
+            price: binanceAPI.formatPrice(m.price, m.symbol),
+            change: binanceAPI.formatPercentageChange(m.priceChangePercent24h).text
+          })),
+          losers: movers.losers.map(m => ({
+            symbol: m.baseAsset,
+            price: binanceAPI.formatPrice(m.price, m.symbol),
+            change: binanceAPI.formatPercentageChange(m.priceChangePercent24h).text
+          }))
+        };
+      } catch (error) {
+        console.error('Error fetching top movers:', error);
+        // Continue without top movers
+      }
     }
 
     // Generate comprehensive analysis
@@ -126,8 +143,24 @@ export async function cryptoPriceAnalysis(input: CryptoPriceQueryInput): Promise
 
   } catch (error) {
     console.error('Error in crypto price analysis:', error);
+    
+    // Provide more specific error messages
+    let errorMessage = 'Unknown error occurred while fetching cryptocurrency data.';
+    
+    if (error instanceof Error) {
+      if (error.message.includes('Failed to fetch')) {
+        errorMessage = 'Unable to connect to Binance API. Please check your internet connection and try again.';
+      } else if (error.message.includes('Bad Request')) {
+        errorMessage = 'Invalid cryptocurrency symbol. Please try asking for a specific coin like "Bitcoin" or "BTC".';
+      } else if (error.message.includes('Not Found')) {
+        errorMessage = 'Cryptocurrency not found. Please check the symbol and try again.';
+      } else {
+        errorMessage = `Error: ${error.message}`;
+      }
+    }
+    
     return {
-      analysis: `I encountered an error while fetching cryptocurrency data: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again or check your internet connection.`,
+      analysis: `❌ ${errorMessage}\n\n💡 **Tips:**\n• Try asking for specific coins like "Bitcoin price" or "ETH value"\n• For market data, ask "Show me market trends" or "Top gainers"\n• Make sure you have a stable internet connection`,
     };
   }
 }
@@ -180,6 +213,22 @@ async function generatePriceAnalysis(
       analysis += `24h High: ${binanceAPI.formatPrice(price.high24h, price.symbol)} | Low: ${binanceAPI.formatPrice(price.low24h, price.symbol)}\n`;
       analysis += `Volume: $${(parseFloat(price.quoteVolume) / 1e6).toFixed(2)}M\n\n`;
     }
+  } else {
+    // Provide fallback information when no price data is available
+    const lowerQuery = query.toLowerCase();
+    if (lowerQuery.includes('bitcoin') || lowerQuery.includes('btc')) {
+      analysis += `📊 **Bitcoin (BTC) Information:**\n\n`;
+      analysis += `Bitcoin is the world's first and most popular cryptocurrency. It was created in 2009 by Satoshi Nakamoto and operates on a decentralized blockchain network.\n\n`;
+      analysis += `**Key Features:**\n• Decentralized digital currency\n• Limited supply of 21 million coins\n• Proof-of-work consensus mechanism\n• Store of value and medium of exchange\n\n`;
+    } else if (lowerQuery.includes('ethereum') || lowerQuery.includes('eth')) {
+      analysis += `📊 **Ethereum (ETH) Information:**\n\n`;
+      analysis += `Ethereum is a decentralized platform that enables smart contracts and decentralized applications (dApps). It was created by Vitalik Buterin in 2015.\n\n`;
+      analysis += `**Key Features:**\n• Smart contract platform\n• Decentralized applications\n• DeFi ecosystem foundation\n• Proof-of-stake consensus (after The Merge)\n\n`;
+    } else if (lowerQuery.includes('crypto') || lowerQuery.includes('price')) {
+      analysis += `📊 **Cryptocurrency Information:**\n\n`;
+      analysis += `Cryptocurrencies are digital or virtual currencies that use cryptography for security. They operate on decentralized blockchain networks.\n\n`;
+      analysis += `**Popular Cryptocurrencies:**\n• Bitcoin (BTC) - Digital gold\n• Ethereum (ETH) - Smart contract platform\n• Binance Coin (BNB) - Exchange token\n• Cardano (ADA) - Research-driven blockchain\n• Solana (SOL) - High-performance blockchain\n\n`;
+    }
   }
 
   // Add market insights
@@ -225,7 +274,11 @@ async function generatePriceAnalysis(
   }
 
   // Add general advice
-  analysis += `💡 **Note**: This data is from Binance and updates every 30 seconds. Always do your own research and consider market conditions before making trading decisions.`;
+  if (priceData.length > 0 || Object.keys(marketInsights).length > 0 || Object.keys(topMovers).length > 0) {
+    analysis += `💡 **Note**: This data is from Binance and updates every 30 seconds. Always do your own research and consider market conditions before making trading decisions.`;
+  } else {
+    analysis += `💡 **Note**: For real-time price data, try asking specific questions like "What's the current price of Bitcoin?" or "Show me ETH price". The system will fetch live data from Binance.`;
+  }
 
   return analysis;
 }
