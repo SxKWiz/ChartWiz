@@ -35,7 +35,9 @@ class BinanceAPIService {
    * Get current price for a specific symbol
    */
   async getPrice(symbol: string): Promise<CryptoPrice> {
-    const cacheKey = `price_${symbol.toUpperCase()}`;
+    // Ensure symbol is properly formatted
+    const formattedSymbol = this.formatSymbol(symbol);
+    const cacheKey = `price_${formattedSymbol}`;
     const cached = this.getCachedData(cacheKey);
     
     if (cached) {
@@ -43,7 +45,7 @@ class BinanceAPIService {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/ticker/24hr?symbol=${symbol.toUpperCase()}`);
+      const response = await fetch(`${this.baseUrl}/ticker/24hr?symbol=${formattedSymbol}`);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch price for ${symbol}: ${response.statusText}`);
@@ -170,6 +172,32 @@ class BinanceAPIService {
     } else {
       return `$${numPrice.toFixed(8)}`;
     }
+  }
+
+  /**
+   * Format symbol for Binance API
+   */
+  formatSymbol(symbol: string): string {
+    const upperSymbol = symbol.toUpperCase();
+    
+    // If already has USDT suffix, return as is
+    if (upperSymbol.endsWith('USDT')) {
+      return upperSymbol;
+    }
+    
+    // If it's a common crypto symbol, add USDT
+    const commonSymbols = ['BTC', 'ETH', 'BNB', 'ADA', 'SOL', 'DOT', 'AVAX', 'MATIC', 'LINK', 'UNI', 'XRP', 'DOGE', 'SHIB', 'LTC', 'BCH', 'XLM', 'VET', 'TRX', 'ATOM', 'FTM'];
+    if (commonSymbols.includes(upperSymbol)) {
+      return `${upperSymbol}USDT`;
+    }
+    
+    // If it's a 3-4 letter symbol, assume it needs USDT
+    if (upperSymbol.length >= 3 && upperSymbol.length <= 4) {
+      return `${upperSymbol}USDT`;
+    }
+    
+    // Return as is if it's already a full trading pair
+    return upperSymbol;
   }
 
   /**
