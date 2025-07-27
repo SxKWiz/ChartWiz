@@ -226,18 +226,27 @@ export async function scanScreenForPatterns(chartImageUri: string): Promise<Scan
   }
 }
 
-export async function detectTradeOpportunity(chartImageUri: string, previousAnalysis?: string, scanMode: 'light' | 'detailed' = 'light'): Promise<IntelligentTradeDetectorOutput> {
+export async function detectTradeOpportunity(
+  chartImageUri: string, 
+  previousAnalysis?: string, 
+  scanMode: 'light' | 'detailed' = 'light',
+  lastOpportunityTime?: number,
+  consecutiveScansWithoutOpportunity: number = 0
+): Promise<IntelligentTradeDetectorOutput> {
   try {
     const input: IntelligentTradeDetectorInput = {
       chartImageUri,
       previousAnalysis: previousAnalysis || 'No previous analysis available',
       scanMode,
+      lastOpportunityTime,
+      consecutiveScansWithoutOpportunity,
     };
     const result = await intelligentTradeDetector(input);
     return result;
   } catch (e) {
     console.error('Trade detection failed:', e);
-    // Return a safe default response
+    // Return a safe default response with adaptive intervals
+    const adaptiveInterval = Math.min(60, 30 + consecutiveScansWithoutOpportunity * 5);
     return {
       tradeOpportunity: {
         opportunityFound: false,
@@ -245,40 +254,59 @@ export async function detectTradeOpportunity(chartImageUri: string, previousAnal
         tradeType: 'neutral',
         urgency: 'watch',
         reasoning: 'Analysis failed due to technical error.',
+        confidenceThreshold: 75,
       },
       screenshotAnalysis: 'Unable to analyze chart due to error.',
       recommendation: 'Please try again or check your connection.',
-      nextScanIn: 30,
+      nextScanIn: adaptiveInterval,
+      cooldownActive: false,
+      marketVolatility: 'medium',
     };
   }
 }
 
-export async function monitorTradeProgress(chartImageUri: string, activeTrade: any, previousUpdate?: string): Promise<TradeMonitorOutput> {
+export async function monitorTradeProgress(
+  chartImageUri: string, 
+  activeTrade: any, 
+  previousUpdate?: string,
+  currentPrice?: string
+): Promise<TradeMonitorOutput> {
   try {
     const input: TradeMonitorInput = {
       chartImageUri,
       activeTrade,
       previousUpdate: previousUpdate || 'No previous update available',
+      currentPrice,
     };
     const result = await monitorActiveTrade(input);
     return result;
   } catch (e) {
     console.error('Trade monitoring failed:', e);
-    // Return a safe default response
+    // Return a safe default response with proper trade state
     return {
       tradeUpdate: {
-        currentPrice: 'N/A',
+        currentPrice: currentPrice || 'N/A',
+        tradeState: {
+          status: 'waiting_entry',
+          entryConfirmed: false,
+          priceDistance: {
+            toEntry: 'N/A',
+            toStop: 'N/A',
+            toFirstTarget: 'N/A',
+          },
+        },
         priceChange: 'N/A',
-        profitLoss: 'N/A',
+        profitLoss: 'N/A (Monitoring Error)',
         riskLevel: 'medium',
-        positionStatus: 'breakeven',
+        positionStatus: 'waiting',
         stopLossDistance: 'N/A',
         takeProfitProgress: [],
-        recommendation: 'hold',
+        recommendation: 'wait_entry',
         reasoning: 'Monitoring failed due to technical error.',
         urgency: 'low',
       },
       marketAnalysis: 'Unable to analyze trade progress due to error.',
+      entryAnalysis: 'Entry analysis unavailable due to technical error.',
       nextUpdateIn: 30,
     };
   }

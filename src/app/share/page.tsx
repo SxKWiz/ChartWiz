@@ -31,6 +31,7 @@ import Link from 'next/link';
 import { InteractiveChartOverlay, type AIDrawingData, type ChartPoint } from '@/components/charts/interactive-chart-overlay';
 import { convertAIAnalysisToDrawingData, generateAnalysisSummary } from '@/lib/chart-drawing-utils';
 import { ChartDemo } from '@/components/charts/chart-demo';
+import { liveAnalysisOptimizer, formatOptimizationStatus } from '@/lib/live-analysis-optimizer';
 
 export default function SharePage() {
   const [isSharing, setIsSharing] = useState(false);
@@ -441,7 +442,12 @@ export default function SharePage() {
     }
 
     try {
-        const result = await monitorTradeProgress(frame, activeTrade, tradeUpdates.length > 0 ? tradeUpdates[tradeUpdates.length - 1].marketAnalysis : undefined);
+        const result = await monitorTradeProgress(
+          frame, 
+          activeTrade, 
+          tradeUpdates.length > 0 ? tradeUpdates[tradeUpdates.length - 1].marketAnalysis : undefined,
+          undefined // currentPrice will be extracted from chart by AI
+        );
         setLastTradeUpdateTime(new Date());
 
         const update = {
@@ -449,9 +455,21 @@ export default function SharePage() {
             timestamp: new Date(),
             screenshot: frame,
             marketAnalysis: result.marketAnalysis,
+            entryAnalysis: result.entryAnalysis,
+            tradeState: result.tradeUpdate.tradeState,
         };
         
         setTradeUpdates(prev => [...prev, update]);
+        
+        // Update active trade state if entry was confirmed
+        if (result.tradeUpdate.tradeState.entryConfirmed && !activeTrade.isEntryConfirmed) {
+          setActiveTrade(prev => ({
+            ...prev,
+            isEntryConfirmed: true,
+            actualEntryPrice: result.tradeUpdate.tradeState.actualEntryPrice,
+            actualEntryTime: result.tradeUpdate.tradeState.actualEntryTime || new Date().toISOString(),
+          }));
+        }
         
         // Create a message for the chat
         const userMessage: Message = {
@@ -466,21 +484,29 @@ export default function SharePage() {
             role: 'assistant',
             content: `📊 **TRADE UPDATE** 📊
 
+**Trade State:** ${result.tradeUpdate.tradeState.status.toUpperCase().replace('_', ' ')}
+**Entry Confirmed:** ${result.tradeUpdate.tradeState.entryConfirmed ? '✅ YES' : '❌ NO'}
 **Current Price:** ${result.tradeUpdate.currentPrice}
 **Price Change:** ${result.tradeUpdate.priceChange}
 **P&L:** ${result.tradeUpdate.profitLoss}
+
+**Distance to Key Levels:**
+- Entry: ${result.tradeUpdate.tradeState.priceDistance.toEntry}
+- Stop Loss: ${result.tradeUpdate.tradeState.priceDistance.toStop}
+- First Target: ${result.tradeUpdate.tradeState.priceDistance.toFirstTarget}
+
 **Risk Level:** ${result.tradeUpdate.riskLevel.toUpperCase()}
 **Position Status:** ${result.tradeUpdate.positionStatus.toUpperCase()}
-**Stop Loss Distance:** ${result.tradeUpdate.stopLossDistance}
 
 **Take Profit Progress:**
-${result.tradeUpdate.takeProfitProgress.map(tp => `- ${tp.target}: ${tp.progress} (${tp.distance} away)`).join('\n')}
+${result.tradeUpdate.takeProfitProgress.map(tp => `- ${tp.target}: ${tp.progress} (${tp.distance} away) ${tp.reached ? '✅' : ''}`).join('\n')}
 
 **Recommendation:** ${result.tradeUpdate.recommendation.toUpperCase().replace('_', ' ')}
 **Urgency:** ${result.tradeUpdate.urgency.toUpperCase()}
 
 **Reasoning:** ${result.tradeUpdate.reasoning}
 
+**Entry Analysis:** ${result.entryAnalysis}
 **Market Analysis:** ${result.marketAnalysis}
 
 **Key Levels:** ${result.tradeUpdate.keyLevels?.join(', ') || 'N/A'}
@@ -520,6 +546,7 @@ ${result.tradeUpdate.takeProfitProgress.map(tp => `- ${tp.target}: ${tp.progress
     if (!activeTrade) return;
     
     setIsMonitoringActiveTrade(true);
+    liveAnalysisOptimizer.startTradeMonitoring();
     setTradeMonitoringStatus('Starting trade monitoring...');
     toast({ title: "Trade Monitoring Activated", description: `Monitoring trade every ${tradeUpdateInterval} seconds.`});
     
@@ -527,10 +554,11 @@ ${result.tradeUpdate.takeProfitProgress.map(tp => `- ${tp.target}: ${tp.progress
     runTradeMonitoring();
 
     tradeMonitoringIntervalRef.current = setInterval(runTradeMonitoring, tradeUpdateInterval * 1000);
-  }, [tradeUpdateInterval, toast, activeTrade]);
+  }, [tradeUpdateInterval, toast, activeTrade, runTradeMonitoring]);
 
   const stopTradeMonitoring = useCallback(() => {
     setIsMonitoringActiveTrade(false);
+    liveAnalysisOptimizer.stopTradeMonitoring();
     setTradeMonitoringStatus('Idle');
     setActiveTrade(null);
     setTradeUpdates([]);
@@ -541,13 +569,20 @@ ${result.tradeUpdate.takeProfitProgress.map(tp => `- ${tp.target}: ${tp.progress
     toast({ title: "Trade Monitoring Stopped" });
   }, [toast]);
 
+  // Enhanced state management for spam prevention
+  const [lastOpportunityTime, setLastOpportunityTime] = useState<number | null>(null);
+  const [consecutiveScansWithoutOpportunity, setConsecutiveScansWithoutOpportunity] = useState(0);
+  const [isInCooldown, setIsInCooldown] = useState(false);
+
   // AI Trade Detection Functions
   const runTradeDetection = useCallback(async () => {
-    // Guard: If monitoring is active, do not detect new trades
-    if (isMonitoringActiveTrade) {
-      setTradeDetectorStatus('Trade monitoring active - detection paused');
+    // Use optimizer to check if scanning should proceed
+    const shouldScan = liveAnalysisOptimizer.shouldScan();
+    if (!shouldScan.allowed) {
+      setTradeDetectorStatus(shouldScan.reason || 'Scan blocked');
       return;
     }
+
     setTradeDetectorStatus('Analyzing...');
     const frame = captureFrame();
     if (!frame) {
@@ -555,9 +590,34 @@ ${result.tradeUpdate.takeProfitProgress.map(tp => `- ${tp.target}: ${tp.progress
         return;
     }
 
+    const startTime = Date.now();
     try {
-        const result = await detectTradeOpportunity(frame, previousAnalysis, scanMode);
+        const result = await detectTradeOpportunity(
+          frame, 
+          previousAnalysis, 
+          scanMode,
+          lastOpportunityTime || undefined,
+          consecutiveScansWithoutOpportunity
+        );
+        const responseTime = Date.now() - startTime;
         setLastTradeDetectionTime(new Date());
+        
+        // Update optimizer with results
+        liveAnalysisOptimizer.updateAfterDetection({
+          opportunityFound: result.tradeOpportunity.opportunityFound,
+          confidence: result.tradeOpportunity.confidence,
+          marketVolatility: result.marketVolatility,
+          responseTime,
+        });
+
+        // Update spam prevention state
+        if (result.tradeOpportunity.opportunityFound) {
+          setLastOpportunityTime(Date.now());
+          setConsecutiveScansWithoutOpportunity(0);
+          setIsInCooldown(result.cooldownActive || false);
+        } else {
+          setConsecutiveScansWithoutOpportunity(prev => prev + 1);
+        }
 
         if (result.tradeOpportunity.opportunityFound && !isMonitoringActiveTrade) {
             // Stop trade detection before any state changes
@@ -569,6 +629,8 @@ ${result.tradeUpdate.takeProfitProgress.map(tp => `- ${tp.target}: ${tp.progress
                 screenshot: frame,
                 analysis: result.screenshotAnalysis,
                 recommendation: result.recommendation,
+                cooldownActive: result.cooldownActive,
+                marketVolatility: result.marketVolatility,
             };
             
             setTradeOpportunities(prev => [opportunity, ...prev.slice(0, 4)]); // Keep last 5 opportunities
@@ -640,13 +702,22 @@ ${result.tradeUpdate.takeProfitProgress.map(tp => `- ${tp.target}: ${tp.progress
         } else if (isMonitoringActiveTrade) {
             setTradeDetectorStatus('Trade monitoring active - detection paused');
         } else {
-            setTradeDetectorStatus('No trade opportunities found. Continuing to monitor...');
+            const statusMsg = result.cooldownActive 
+              ? `Cooldown active (${consecutiveScansWithoutOpportunity} empty scans)`
+              : `No opportunities found (${consecutiveScansWithoutOpportunity} consecutive scans)`;
+            setTradeDetectorStatus(statusMsg);
             setScanMode('light'); // Switch back to light mode
         }
         
         // Update scan interval based on AI recommendation
         if (result.nextScanIn !== tradeDetectionInterval) {
             setTradeDetectionInterval(result.nextScanIn);
+            if (result.nextScanIn > 30) {
+              toast({
+                title: "Detection Interval Adjusted",
+                description: `Scanning frequency reduced to every ${result.nextScanIn} seconds due to market conditions.`,
+              });
+            }
         }
         
     } catch (error) {
