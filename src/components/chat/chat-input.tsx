@@ -581,8 +581,8 @@ export function ChatInput({ personas, activePersonaId, onPersonaChange, onPerson
               placeholder="Ask a question or upload a chart to analyze..."
               value={question}
               onChange={(e) => {
-                // Use optimized input handler for smoother performance
-                optimizedInputHandler(() => setQuestion(e.target.value));
+                // Direct input handling for immediate response
+                setQuestion(e.target.value);
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
