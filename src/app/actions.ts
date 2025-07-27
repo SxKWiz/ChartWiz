@@ -307,14 +307,13 @@ export async function generateChartDrawingAnalysis(
     // Return empty analysis on error
     return {
       analysis: 'Unable to generate chart analysis due to an error.',
-      keyLevels: { support: [], resistance: [] },
-      trendLines: { uptrend: [], downtrend: [] },
+      supportLevels: [],
+      resistanceLevels: [],
+      trendLines: [],
       patterns: [],
-      fibonacci: {},
-      zones: { accumulation: [], distribution: [], demand: [], supply: [] },
-      annotations: [],
+      fibonacciLevels: [],
       tradingSignals: [],
-      drawings: [],
+      keyInsights: [],
     };
   }
 }

@@ -120,28 +120,27 @@ export function ChartDemo({ onClose }: ChartDemoProps) {
     } catch (error) {
       console.error('Demo analysis failed:', error);
       // Return sample drawing data for demo purposes
-      const sampleDrawingData: AIDrawingData = {
+      const sampleAnalysis = {
+        analysis: 'Demo analysis: This is a sample uptrend formation with strong support around 47000.',
+        supportLevels: [
+          { price: 47000, yCoordinate: 380, strength: 85, description: 'Strong support level with multiple touches' },
+          { price: 48500, yCoordinate: 340, strength: 70, description: 'Secondary support level' }
+        ],
+        resistanceLevels: [
+          { price: 50000, yCoordinate: 250, strength: 80, description: 'Key resistance at psychological level' }
+        ],
+        trendLines: [
+          { type: 'uptrend' as const, startX: 120, startY: 380, endX: 220, endY: 220, strength: 90, description: 'Primary uptrend line' }
+        ],
         patterns: [],
-        keyLevels: {
-          support: [47000, 48500],
-          resistance: [50000, 51500]
-        },
-        trendLines: {
-          uptrend: [[
-            { x: 120, y: 380, price: 47000 },
-            { x: 220, y: 220, price: 50500 }
-          ]],
-          downtrend: []
-        },
-        zones: {},
-        fibonacci: {},
-        annotations: [{
-          text: 'Demo Support Level',
-          position: { x: clickPoint.x, y: clickPoint.y },
-          type: 'info',
-          color: '#22c55e'
-        }]
+        fibonacciLevels: [],
+        tradingSignals: [
+          { type: 'buy' as const, x: clickPoint.x, y: clickPoint.y, confidence: 75, reasoning: 'Bullish trend continuation signal' }
+        ],
+        keyInsights: ['Strong uptrend formation', 'Multiple support levels identified', 'Good buying opportunity near support']
       };
+      
+      const sampleDrawingData = convertAIAnalysisToDrawingData(sampleAnalysis);
       
       setAiDrawingData(sampleDrawingData);
       return sampleDrawingData;
