@@ -23,11 +23,14 @@ import { Loader2, Mic, MonitorPlay, Wand2, X, Camera, Image as ImageIcon, Sparkl
 import { useToast } from '@/hooks/use-toast';
 import { analyzeChartImage } from '@/ai/flows/analyze-chart-image';
 import { textToSpeech } from '@/ai/flows/text-to-speech-flow';
-import { scanScreenForPatterns, detectTradeOpportunity, monitorTradeProgress } from '@/app/actions';
+import { scanScreenForPatterns, detectTradeOpportunity, monitorTradeProgress, generateChartDrawingAnalysis } from '@/app/actions';
 import { ChatMessages } from '@/components/chat/chat-messages';
 import type { Message } from '@/lib/types';
 import { nanoid } from 'nanoid';
 import Link from 'next/link';
+import { InteractiveChartOverlay, type AIDrawingData, type ChartPoint } from '@/components/charts/interactive-chart-overlay';
+import { convertAIAnalysisToDrawingData, generateAnalysisSummary } from '@/lib/chart-drawing-utils';
+import { ChartDemo } from '@/components/charts/chart-demo';
 
 export default function SharePage() {
   const [isSharing, setIsSharing] = useState(false);
@@ -66,6 +69,11 @@ export default function SharePage() {
 
   const [chart1, setChart1] = useState<string | null>(null);
   const [chart2, setChart2] = useState<string | null>(null);
+  
+  // Interactive chart drawing state
+  const [aiDrawingData, setAiDrawingData] = useState<AIDrawingData | undefined>(undefined);
+  const [isInteractiveMode, setIsInteractiveMode] = useState(false);
+  const [showDemo, setShowDemo] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -172,6 +180,67 @@ export default function SharePage() {
       setIsLoading(false);
     }
   }, [chart1, chart2, question, isListening, isSoundEnabled, toast]);
+
+  // Handle interactive chart analysis
+  const handleChartAnalysis = useCallback(async (clickPoint: ChartPoint, chartImageUri: string): Promise<AIDrawingData> => {
+    try {
+      // For this example, we'll use a reasonable image size. In a real app, you'd get this from the actual image
+      const imageWidth = 800;
+      const imageHeight = 600;
+      
+      const analysisResult = await generateChartDrawingAnalysis(
+        chartImageUri,
+        clickPoint,
+        imageWidth,
+        imageHeight,
+        'comprehensive'
+      );
+      
+      const drawingData = convertAIAnalysisToDrawingData(analysisResult);
+      
+      // Create a message for the chat showing the analysis
+      const userMessage: Message = {
+        id: nanoid(),
+        role: 'user',
+        content: `Interactive chart analysis at coordinates (${Math.round(clickPoint.x)}, ${Math.round(clickPoint.y)})`,
+        imagePreviews: [chartImageUri],
+      };
+      
+      const assistantMessage: Message = {
+        id: nanoid(),
+        role: 'assistant',
+        content: generateAnalysisSummary(analysisResult, drawingData),
+      };
+      
+      setAnalysisResult(prev => [...prev, userMessage, assistantMessage]);
+      
+      return drawingData;
+    } catch (error) {
+      console.error('Interactive chart analysis failed:', error);
+      throw error;
+    }
+  }, []);
+
+  const handleChartClick = useCallback(async (clickPoint: ChartPoint) => {
+    const chartToAnalyze = chart1 || (chart2 ? chart2 : null);
+    if (!chartToAnalyze) return;
+    
+    try {
+      const drawingData = await handleChartAnalysis(clickPoint, chartToAnalyze);
+      setAiDrawingData(drawingData);
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Analysis Failed',
+        description: 'Could not analyze the chart at the clicked location.',
+      });
+    }
+  }, [chart1, chart2, handleChartAnalysis, toast]);
+
+  // Clear drawings when charts change
+  useEffect(() => {
+    setAiDrawingData(undefined);
+  }, [chart1, chart2]);
 
 
   useEffect(() => {
@@ -852,57 +921,101 @@ ${result.tradeUpdate.takeProfitProgress.map(tp => `- ${tp.target}: ${tp.progress
                     </Card>
                     <Card>
                         <CardHeader>
-                            <CardTitle>Manual Analysis</CardTitle>
-                             <CardDescription>Capture up to two charts, ask a question, and analyze.</CardDescription>
+                            <CardTitle>Chart Analysis</CardTitle>
+                             <CardDescription>Capture charts and choose your analysis mode.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <ChartCaptureSlot chart={chart1} onCapture={() => captureFrame(setChart1)} onClear={() => setChart1(null)} number={1} />
-                                <ChartCaptureSlot chart={chart2} onCapture={() => captureFrame(setChart2)} onClear={() => setChart2(null)} number={2} />
+                            <div className="flex items-center space-x-2">
+                                <Switch
+                                    id="interactive-mode"
+                                    checked={isInteractiveMode}
+                                    onCheckedChange={setIsInteractiveMode}
+                                />
+                                <Label htmlFor="interactive-mode" className="flex items-center gap-2">
+                                    <Target className="h-4 w-4" />
+                                    Interactive Drawing Mode
+                                </Label>
                             </div>
-
-                            <div className="flex items-start gap-2">
-                                 <div className="relative flex-1">
-                                    <Textarea
-                                    placeholder="Ask a question about the captured chart(s)..."
-                                    value={question}
-                                    onChange={(e) => setQuestion(e.target.value)}
-                                    className="resize-none pr-10"
-                                    rows={2}
-                                    disabled={isLoading || isHandsFreeMode}
+                            
+                            {isInteractiveMode && (chart1 || chart2) ? (
+                                <div className="space-y-4">
+                                    <InteractiveChartOverlay
+                                        imageUrl={chart1 || chart2!}
+                                        aiDrawingData={aiDrawingData}
+                                        onChartClick={handleChartClick}
+                                        onRequestAnalysis={(clickPoint) => handleChartAnalysis(clickPoint, chart1 || chart2!)}
+                                        enableInteraction={true}
                                     />
-                                    <Button
-                                    type="button"
-                                    size="icon"
-                                    variant={isListening ? 'destructive' : 'ghost'}
-                                    onClick={toggleListening}
-                                    disabled={!recognitionRef.current || isLoading || isHandsFreeMode}
-                                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
-                                    >
-                                    <Mic className="h-4 w-4" />
-                                    <span className="sr-only">Ask by voice</span>
-                                    </Button>
+                                    <div className="flex items-center gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setAiDrawingData(undefined)}
+                                        >
+                                            Clear Drawings
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setIsInteractiveMode(false)}
+                                        >
+                                            Switch to Regular Analysis
+                                        </Button>
+                                    </div>
                                 </div>
-                                <Button
-                                    onClick={analyzeCharts}
-                                    disabled={isLoading || !chart1}
-                                    className="h-auto"
-                                >
-                                    {isLoading ? (
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    ) : (
-                                        <Wand2 className="mr-2 h-4 w-4" />
-                                    )}
-                                    Analyze
-                                </Button>
-                            </div>
+                            ) : (
+                                <>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <ChartCaptureSlot chart={chart1} onCapture={() => captureFrame(setChart1)} onClear={() => setChart1(null)} number={1} />
+                                        <ChartCaptureSlot chart={chart2} onCapture={() => captureFrame(setChart2)} onClear={() => setChart2(null)} number={2} />
+                                    </div>
+
+                                    <div className="flex items-start gap-2">
+                                         <div className="relative flex-1">
+                                            <Textarea
+                                            placeholder="Ask a question about the captured chart(s)..."
+                                            value={question}
+                                            onChange={(e) => setQuestion(e.target.value)}
+                                            className="resize-none pr-10"
+                                            rows={2}
+                                            disabled={isLoading || isHandsFreeMode}
+                                            />
+                                            <Button
+                                            type="button"
+                                            size="icon"
+                                            variant={isListening ? 'destructive' : 'ghost'}
+                                            onClick={toggleListening}
+                                            disabled={!recognitionRef.current || isLoading || isHandsFreeMode}
+                                            className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+                                            >
+                                            <Mic className="h-4 w-4" />
+                                            <span className="sr-only">Ask by voice</span>
+                                            </Button>
+                                        </div>
+                                        <Button
+                                            onClick={analyzeCharts}
+                                            disabled={isLoading || !chart1}
+                                            className="h-auto"
+                                        >
+                                            {isLoading ? (
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            ) : (
+                                                <Wand2 className="mr-2 h-4 w-4" />
+                                            )}
+                                            Analyze
+                                        </Button>
+                                    </div>
+                                </>
+                            )}
                         </CardContent>
                     </Card>
                   </>
                 )}
               </div>
               <div className="flex flex-col">
-                  {analysisResult.length > 0 ? (
+                  {showDemo ? (
+                    <ChartDemo onClose={() => setShowDemo(false)} />
+                  ) : analysisResult.length > 0 ? (
                     <div className="flex-1 overflow-y-auto h-[75vh]">
                       <ChatMessages 
                         messages={analysisResult} 
@@ -991,12 +1104,20 @@ ${result.tradeUpdate.takeProfitProgress.map(tp => `- ${tp.target}: ${tp.progress
                          </Card>
                        )}
                       <Card className="flex-1 flex items-center justify-center">
-                        <div className="text-center text-muted-foreground">
+                        <div className="text-center text-muted-foreground space-y-4">
                             <Wand2 className="mx-auto h-12 w-12" />
                             <h3 className="mt-4 text-lg font-semibold">Analysis will appear here</h3>
                             <p className="mt-2 text-sm">
                               Use the AI Trade Detector for automatic alerts or capture charts manually to begin.
                             </p>
+                            <Button 
+                              onClick={() => setShowDemo(true)}
+                              variant="outline"
+                              className="mt-4"
+                            >
+                              <Target className="mr-2 h-4 w-4" />
+                              Try Interactive Drawing Demo
+                            </Button>
                         </div>
                       </Card>
                     </div>

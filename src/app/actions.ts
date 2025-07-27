@@ -10,6 +10,7 @@ import { monitorActiveTrade, type TradeMonitorInput, type TradeMonitorOutput } f
 import { comprehensiveAIBrain, type ComprehensiveAnalysisInput, type ComprehensiveAnalysisOutput } from '@/ai/flows/comprehensive-ai-brain';
 import { enhancedMarketAnalysis, type EnhancedMarketAnalysisInput, type EnhancedMarketAnalysisOutput } from '@/ai/flows/enhanced-market-analysis';
 import { marketSentimentAnalysis, type MarketSentimentAnalysisInput, type MarketSentimentAnalysisOutput } from '@/ai/flows/market-sentiment-analyzer';
+import { analyzeChartDrawing, type ChartDrawingAnalysisInput, type ChartDrawingAnalysisOutput } from '@/ai/flows/chart-drawing-analysis';
 import type { Message } from '@/lib/types';
 import type { Persona } from '@/lib/types';
 
@@ -279,6 +280,41 @@ export async function monitorTradeProgress(chartImageUri: string, activeTrade: a
       },
       marketAnalysis: 'Unable to analyze trade progress due to error.',
       nextUpdateIn: 30,
+    };
+  }
+}
+
+export async function generateChartDrawingAnalysis(
+  chartImageUri: string,
+  clickPoint: { x: number; y: number },
+  imageWidth: number,
+  imageHeight: number,
+  analysisType: 'auto' | 'support_resistance' | 'trendlines' | 'patterns' | 'fibonacci' | 'comprehensive' = 'auto',
+  tradingPersona?: string
+): Promise<ChartDrawingAnalysisOutput> {
+  try {
+    const result = await analyzeChartDrawing({
+      chartImageUri,
+      clickPoint,
+      imageWidth,
+      imageHeight,
+      analysisType,
+      tradingPersona,
+    });
+    return result;
+  } catch (e) {
+    console.error('Chart drawing analysis failed:', e);
+    // Return empty analysis on error
+    return {
+      analysis: 'Unable to generate chart analysis due to an error.',
+      keyLevels: { support: [], resistance: [] },
+      trendLines: { uptrend: [], downtrend: [] },
+      patterns: [],
+      fibonacci: {},
+      zones: { accumulation: [], distribution: [], demand: [], supply: [] },
+      annotations: [],
+      tradingSignals: [],
+      drawings: [],
     };
   }
 }
