@@ -13,6 +13,7 @@ import { marketSentimentAnalysis, type MarketSentimentAnalysisInput, type Market
 import { analyzeChartDrawing, type ChartDrawingAnalysisInput, type ChartDrawingAnalysisOutput } from '@/ai/flows/chart-drawing-analysis';
 import { wizzUltraAIBrain, type WizzUltraAnalysisInput, type WizzUltraAnalysisOutput } from '@/ai/flows/wizz-ultra-ai-brain';
 import { ultraPerformanceOptimizer, type UltraOptimizationInput, type UltraOptimizationOutput } from '@/ai/flows/ultra-performance-optimizer';
+import { cryptoPriceAnalysis, type CryptoPriceQueryInput, type CryptoPriceResponseOutput } from '@/ai/flows/crypto-price-analysis';
 import { generateAnalysisContext } from '@/lib/chart-analysis-helpers';
 import type { Message } from '@/lib/types';
 import type { Persona } from '@/lib/types';
@@ -25,6 +26,7 @@ type GetAiResponseOutput = {
   sentimentAnalysis?: MarketSentimentAnalysisOutput;
   wizzUltraAnalysis?: WizzUltraAnalysisOutput;
   ultraOptimization?: UltraOptimizationOutput;
+  cryptoPriceAnalysis?: CryptoPriceResponseOutput;
   alternativeScenario?: string;
 }
 
@@ -196,14 +198,47 @@ export async function getEnhancedAiResponse(formData: FormData): Promise<{ answe
           },
         };
       } else {
-        // Fallback to regular text chat
-        const result: TextChatOutput = await textChat({ question });
-        return {
-          answer: {
-            analysis: result.answer,
-            recommendation: undefined,
-          },
-        };
+        // Check if this is a crypto price query
+        const lowerQuestion = question.toLowerCase();
+        const cryptoKeywords = ['price', 'current', 'market', 'bitcoin', 'btc', 'ethereum', 'eth', 'crypto', 'coin', 'token', 'trading', 'value', 'worth', 'cost', 'gainer', 'loser', 'mover', 'trend', 'sentiment'];
+        const isCryptoQuery = cryptoKeywords.some(keyword => lowerQuestion.includes(keyword));
+        
+        if (isCryptoQuery) {
+          try {
+            console.log('🔍 Detected crypto price query, fetching real-time data...');
+            const cryptoInput: CryptoPriceQueryInput = {
+              query: question,
+            };
+            
+            const cryptoResult = await cryptoPriceAnalysis(cryptoInput);
+            
+            return {
+              answer: {
+                analysis: cryptoResult.analysis,
+                cryptoPriceAnalysis: cryptoResult,
+              },
+            };
+          } catch (cryptoError) {
+            console.error('Crypto price analysis failed, falling back to text chat:', cryptoError);
+            // Fallback to regular text chat if crypto analysis fails
+            const result: TextChatOutput = await textChat({ question });
+            return {
+              answer: {
+                analysis: result.answer,
+                recommendation: undefined,
+              },
+            };
+          }
+        } else {
+          // Fallback to regular text chat
+          const result: TextChatOutput = await textChat({ question });
+          return {
+            answer: {
+              analysis: result.answer,
+              recommendation: undefined,
+            },
+          };
+        }
       }
     }
   } catch (e) {
@@ -261,14 +296,50 @@ export async function getAiResponse(formData: FormData): Promise<{ answer?: GetA
   }
 
   try {
-    const result: TextChatOutput = await textChat({ question });
-    return {
-      answer: {
-        analysis: result.answer,
-        recommendation: undefined,
-        alternativeScenario: undefined,
-      },
-    };
+    // Check if this is a crypto price query
+    const lowerQuestion = question.toLowerCase();
+    const cryptoKeywords = ['price', 'current', 'market', 'bitcoin', 'btc', 'ethereum', 'eth', 'crypto', 'coin', 'token', 'trading', 'value', 'worth', 'cost', 'gainer', 'loser', 'mover', 'trend', 'sentiment'];
+    const isCryptoQuery = cryptoKeywords.some(keyword => lowerQuestion.includes(keyword));
+    
+    if (isCryptoQuery) {
+      try {
+        console.log('🔍 Detected crypto price query, fetching real-time data...');
+        const cryptoInput: CryptoPriceQueryInput = {
+          query: question,
+        };
+        
+        const cryptoResult = await cryptoPriceAnalysis(cryptoInput);
+        
+        return {
+          answer: {
+            analysis: cryptoResult.analysis,
+            cryptoPriceAnalysis: cryptoResult,
+            recommendation: undefined,
+            alternativeScenario: undefined,
+          },
+        };
+      } catch (cryptoError) {
+        console.error('Crypto price analysis failed, falling back to text chat:', cryptoError);
+        // Fallback to regular text chat if crypto analysis fails
+        const result: TextChatOutput = await textChat({ question });
+        return {
+          answer: {
+            analysis: result.answer,
+            recommendation: undefined,
+            alternativeScenario: undefined,
+          },
+        };
+      }
+    } else {
+      const result: TextChatOutput = await textChat({ question });
+      return {
+        answer: {
+          analysis: result.answer,
+          recommendation: undefined,
+          alternativeScenario: undefined,
+        },
+      };
+    }
   } catch (e) {
     console.error(e);
     const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
