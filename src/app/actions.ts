@@ -11,6 +11,9 @@ import { comprehensiveAIBrain, type ComprehensiveAnalysisInput, type Comprehensi
 import { enhancedMarketAnalysis, type EnhancedMarketAnalysisInput, type EnhancedMarketAnalysisOutput } from '@/ai/flows/enhanced-market-analysis';
 import { marketSentimentAnalysis, type MarketSentimentAnalysisInput, type MarketSentimentAnalysisOutput } from '@/ai/flows/market-sentiment-analyzer';
 import { analyzeChartDrawing, type ChartDrawingAnalysisInput, type ChartDrawingAnalysisOutput } from '@/ai/flows/chart-drawing-analysis';
+import { wizzUltraAIBrain, type WizzUltraAnalysisInput, type WizzUltraAnalysisOutput } from '@/ai/flows/wizz-ultra-ai-brain';
+import { ultraPerformanceOptimizer, type UltraOptimizationInput, type UltraOptimizationOutput } from '@/ai/flows/ultra-performance-optimizer';
+import { generateAnalysisContext } from '@/lib/chart-analysis-helpers';
 import type { Message } from '@/lib/types';
 import type { Persona } from '@/lib/types';
 
@@ -20,6 +23,8 @@ type GetAiResponseOutput = {
   comprehensiveAnalysis?: ComprehensiveAnalysisOutput;
   enhancedAnalysis?: EnhancedMarketAnalysisOutput;
   sentimentAnalysis?: MarketSentimentAnalysisOutput;
+  wizzUltraAnalysis?: WizzUltraAnalysisOutput;
+  ultraOptimization?: UltraOptimizationOutput;
   alternativeScenario?: string;
 }
 
@@ -47,7 +52,7 @@ export async function getEnhancedAiResponse(formData: FormData): Promise<{ answe
     const files = formData.getAll('files') as File[];
     
     if (files.length > 0) {
-      // For chart analysis with comprehensive AI brain
+      // For chart analysis - determine which AI brain to use
       if (!question) {
         question = "Provide a comprehensive analysis of this chart with enhanced AI insights and detailed trade recommendations.";
       }
@@ -61,6 +66,60 @@ export async function getEnhancedAiResponse(formData: FormData): Promise<{ answe
         })
       );
 
+      // Check if Wizz Ultra AI is selected
+      if (personaDescription?.toLowerCase().includes('wizz')) {
+        console.log('🔮 Activating Wizz Ultra AI Brain...');
+        
+        const wizzInput: WizzUltraAnalysisInput = {
+          primaryChartUri: chartImageUris[0],
+          secondaryChartUri: chartImageUris[1],
+          tertiaryChartUri: chartImageUris[2],
+          question,
+          riskTolerance,
+          marketDataText,
+          newsData,
+          socialData,
+          onChainData,
+          // Enhanced with additional Wizz-specific data
+          userProfileData: {
+            tradingExperience: 'advanced', // Could be extracted from user profile
+            capitalSize: 'medium',
+            preferredStyle: 'adaptive',
+            winRatePreference: 'balanced',
+          },
+          marketRegimeData: {
+            fearGreedIndex: 65, // Could be fetched from real API
+            btcDominance: 52.5,
+          },
+        };
+
+        const wizzResult = await wizzUltraAIBrain(wizzInput);
+
+        return {
+          answer: {
+            analysis: `🔮 **WIZZ ULTRA AI ANALYSIS** 🔮\n\n${wizzResult.executive_summary}`,
+            recommendation: {
+              entryPrice: {
+                value: wizzResult.wizz_recommendation.primaryRecommendation.entryStrategy.optimalEntry,
+                reason: 'Wizz Ultra precision entry optimization'
+              },
+              takeProfit: wizzResult.wizz_recommendation.primaryRecommendation.profitTargets.map(pt => ({
+                value: pt.level,
+                reason: pt.reasoning
+              })),
+              stopLoss: {
+                value: wizzResult.wizz_recommendation.primaryRecommendation.riskManagement.stopLoss.level,
+                reason: wizzResult.wizz_recommendation.primaryRecommendation.riskManagement.stopLoss.reasoning
+              },
+              riskRewardRatio: wizzResult.wizz_recommendation.primaryRecommendation.riskRewardProfile.ratio,
+            },
+            wizzUltraAnalysis: wizzResult,
+            alternativeScenario: wizzResult.wizz_recommendation.alternativeScenarios[0]?.scenario,
+          },
+        };
+      }
+
+      // For non-Wizz personas, use comprehensive AI brain with ultra optimization
       const comprehensiveInput: ComprehensiveAnalysisInput = {
         primaryChartUri: chartImageUris[0],
         secondaryChartUri: chartImageUris[1],
@@ -75,9 +134,36 @@ export async function getEnhancedAiResponse(formData: FormData): Promise<{ answe
 
       const result = await comprehensiveAIBrain(comprehensiveInput);
 
+      // Apply ultra performance optimization to enhance any AI brain
+      console.log('🚀 Applying Ultra Performance Optimization...');
+      const context = generateAnalysisContext(question);
+      
+      const ultraOptimizationInput: UltraOptimizationInput = {
+        originalRecommendation: result,
+        chartData: {
+          primaryChartUri: chartImageUris[0],
+          secondaryChartUri: chartImageUris[1],
+          timeframe: context.timeframe || '4h',
+        },
+        marketContext: {
+          asset: context.asset,
+          currentPrice: context.currentPrice,
+          volatility: 'medium', // Could be calculated from chart data
+          trend: 'neutral',
+        },
+        tradingPersona: personaDescription || 'Default',
+        riskTolerance,
+        userPreferences: {
+          winRatePreference: 'balanced',
+          tradingStyle: context.tradingStyle || 'swing_trading',
+        },
+      };
+
+      const ultraOptimization = await ultraPerformanceOptimizer(ultraOptimizationInput);
+
       return {
         answer: {
-          analysis: result.executiveSummary,
+          analysis: `${result.executiveSummary}\n\n🚀 **ULTRA-OPTIMIZED PERFORMANCE**\n• Win Rate Boost: +${ultraOptimization.performanceEnhancements.winRateImprovement}%\n• Profit Enhancement: +${ultraOptimization.performanceEnhancements.profitabilityBoost}%\n• Risk Reduction: -${ultraOptimization.performanceEnhancements.riskReduction}%\n• Precision Increase: +${ultraOptimization.performanceEnhancements.precisionIncrease}%`,
           recommendation: {
             entryPrice: result.synthesizedRecommendation.entryPrice,
             takeProfit: result.synthesizedRecommendation.takeProfit,
@@ -85,6 +171,7 @@ export async function getEnhancedAiResponse(formData: FormData): Promise<{ answe
             riskRewardRatio: result.synthesizedRecommendation.riskRewardRatio,
           },
           comprehensiveAnalysis: result,
+          ultraOptimization,
           alternativeScenario: result.alternativeScenarios[0]?.implication,
         },
       };

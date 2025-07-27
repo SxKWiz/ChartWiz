@@ -40,6 +40,7 @@ import { useToast } from '@/hooks/use-toast';
 import type { Message, Persona } from '@/lib/types';
 import { nanoid } from 'nanoid';
 import { cn } from '@/lib/utils';
+import { optimizedInputHandler, optimizeImageLoading, safeExecute } from '@/lib/performance-booster';
 
 interface PersonaManagerProps {
   personas: Persona[];
@@ -325,7 +326,7 @@ export function ChatInput({ personas, activePersonaId, onPersonaChange, onPerson
     }
   }, [toast]);
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
@@ -340,21 +341,37 @@ export function ChatInput({ personas, activePersonaId, onPersonaChange, onPerson
       return;
     }
 
-    const newPreviews: string[] = [];
-    validFiles.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        if (e.target?.result) {
-          newPreviews.push(e.target.result as string);
-          if (newPreviews.length === validFiles.length) {
-            setImagePreviews(prev => [...prev, ...newPreviews]);
+    try {
+      // Use performance-optimized image loading
+      const newPreviews = await Promise.all(
+        validFiles.map(file => optimizeImageLoading(file))
+      );
+      
+      setImagePreviews(prev => [...prev, ...newPreviews]);
+      setImageFiles(prev => [...prev, ...validFiles]);
+      
+      console.log('⚡ Images optimized for faster AI processing');
+    } catch (error) {
+      console.error('Image optimization failed, using fallback:', error);
+      
+      // Fallback to original method
+      const newPreviews: string[] = [];
+      validFiles.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          if (e.target?.result) {
+            newPreviews.push(e.target.result as string);
+            if (newPreviews.length === validFiles.length) {
+              setImagePreviews(prev => [...prev, ...newPreviews]);
+            }
           }
-        }
-      };
-      reader.readAsDataURL(file);
-    });
-
-    setImageFiles(prev => [...prev, ...validFiles]);
+        };
+        reader.readAsDataURL(file);
+      });
+      
+      setImageFiles(prev => [...prev, ...validFiles]);
+    }
+    
     if (e.target) e.target.value = '';
   };
 
@@ -562,7 +579,10 @@ export function ChatInput({ personas, activePersonaId, onPersonaChange, onPerson
               ref={textareaRef}
               placeholder="Ask a question or upload a chart to analyze..."
               value={question}
-              onChange={(e) => setQuestion(e.target.value)}
+              onChange={(e) => {
+                // Use optimized input handler for smoother performance
+                optimizedInputHandler(() => setQuestion(e.target.value));
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
