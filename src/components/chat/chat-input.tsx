@@ -269,6 +269,7 @@ interface ChatInputProps {
 
 const defaultPersonas: Persona[] = [
   { id: 'default', name: 'Default', description: 'A balanced, general technical analyst suitable for swing trading.', isCustom: false },
+  { id: 'wizz', name: 'Wizz', description: 'Advanced AI trading assistant with enhanced pattern recognition and intelligent risk management. Optimized for all timeframes with smart entry/exit strategies.', isCustom: false },
   { id: 'scalper', name: 'Scalper', description: 'Focuses on very short timeframes (1-15 mins), micro-patterns, and quick profits with tight stop-losses.', isCustom: false },
   { id: 'day_trader', name: 'Day Trader', description: 'Focuses on hourly and 4-hour charts for intraday trends. Trades are opened and closed within the same day.', isCustom: false },
   { id: 'swing_trader', name: 'Swing Trader', description: 'Focuses on daily and weekly charts to identify multi-day or multi-week trends.', isCustom: false },
