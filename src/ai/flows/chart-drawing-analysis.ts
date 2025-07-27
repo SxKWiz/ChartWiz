@@ -11,16 +11,12 @@
 import { ai } from '../genkit';
 import { z } from 'zod';
 
-const ChartPointSchema = z.object({
-  x: z.number().describe('X coordinate on the chart image'),
-  y: z.number().describe('Y coordinate on the chart image'),
-  price: z.number().optional().describe('Corresponding price value'),
-  timestamp: z.number().optional().describe('Corresponding timestamp'),
-});
-
 const ChartDrawingAnalysisInputSchema = z.object({
   chartImageUri: z.string().describe('Chart image as a data URI'),
-  clickPoint: ChartPointSchema.describe('Point where user clicked on the chart'),
+  clickPoint: z.object({
+    x: z.number(),
+    y: z.number(),
+  }).describe('Point where user clicked on the chart'),
   imageWidth: z.number().describe('Width of the chart image in pixels'),
   imageHeight: z.number().describe('Height of the chart image in pixels'),
   analysisType: z.enum(['auto', 'support_resistance', 'trendlines', 'patterns', 'fibonacci', 'comprehensive']).optional().default('auto').describe('Type of analysis to perform'),
@@ -29,140 +25,57 @@ const ChartDrawingAnalysisInputSchema = z.object({
 
 export type ChartDrawingAnalysisInput = z.infer<typeof ChartDrawingAnalysisInputSchema>;
 
-const PatternDrawingSchema = z.object({
-  id: z.string(),
-  type: z.enum(['support', 'resistance', 'trendline', 'pattern', 'fibonacci', 'volume', 'signal']),
-  name: z.string(),
-  description: z.string(),
-  confidence: z.number().min(0).max(100),
-  points: z.array(ChartPointSchema),
-  style: z.object({
-    color: z.string().describe('Hex color code for the drawing'),
-    strokeWidth: z.number(),
-    strokeDasharray: z.string().optional(),
-    fillOpacity: z.number().optional(),
-  }),
-  metadata: z.object({
-    patternType: z.string().optional(),
-    direction: z.enum(['bullish', 'bearish', 'neutral']).optional(),
-    strength: z.number().optional(),
-    timeframe: z.string().optional(),
-    priceTargets: z.array(z.number()).optional(),
-  }).optional(),
-});
-
 const ChartDrawingAnalysisOutputSchema = z.object({
   analysis: z.string().describe('Detailed analysis of the chart at the clicked location'),
   
-  keyLevels: z.object({
-    support: z.array(z.object({
-      price: z.number(),
-      coordinates: z.array(ChartPointSchema),
-      strength: z.number().min(0).max(100),
-      touches: z.number(),
-      description: z.string(),
-    })),
-    resistance: z.array(z.object({
-      price: z.number(),
-      coordinates: z.array(ChartPointSchema),
-      strength: z.number().min(0).max(100),
-      touches: z.number(),
-      description: z.string(),
-    })),
-  }),
+  supportLevels: z.array(z.object({
+    price: z.number(),
+    yCoordinate: z.number(),
+    strength: z.number().min(0).max(100),
+    description: z.string(),
+  })).describe('Identified support levels'),
   
-  trendLines: z.object({
-    uptrend: z.array(z.object({
-      points: z.array(ChartPointSchema),
-      strength: z.number(),
-      description: z.string(),
-      slope: z.number(),
-    })),
-    downtrend: z.array(z.object({
-      points: z.array(ChartPointSchema),
-      strength: z.number(),
-      description: z.string(),
-      slope: z.number(),
-    })),
-  }),
+  resistanceLevels: z.array(z.object({
+    price: z.number(),
+    yCoordinate: z.number(),
+    strength: z.number().min(0).max(100),
+    description: z.string(),
+  })).describe('Identified resistance levels'),
+  
+  trendLines: z.array(z.object({
+    type: z.enum(['uptrend', 'downtrend']),
+    startX: z.number(),
+    startY: z.number(),
+    endX: z.number(),
+    endY: z.number(),
+    strength: z.number().min(0).max(100),
+    description: z.string(),
+  })).describe('Identified trend lines'),
   
   patterns: z.array(z.object({
     name: z.string(),
-    type: z.enum(['continuation', 'reversal', 'consolidation']),
-    direction: z.enum(['bullish', 'bearish', 'neutral']),
-    coordinates: z.array(ChartPointSchema),
+    type: z.enum(['bullish', 'bearish', 'neutral']),
     confidence: z.number().min(0).max(100),
     description: z.string(),
-    targets: z.array(z.number()).optional(),
-    completion: z.number().min(0).max(100),
-  })),
+    coordinates: z.string().describe('Comma-separated coordinates as "x1,y1,x2,y2,x3,y3"'),
+  })).describe('Chart patterns found'),
   
-  fibonacci: z.object({
-    retracement: z.object({
-      start: ChartPointSchema,
-      end: ChartPointSchema,
-      levels: z.array(z.object({
-        level: z.number(),
-        price: z.number(),
-        coordinates: ChartPointSchema,
-        description: z.string(),
-      })),
-    }).optional(),
-    extension: z.object({
-      start: ChartPointSchema,
-      end: ChartPointSchema,
-      levels: z.array(z.object({
-        level: z.number(),
-        price: z.number(),
-        coordinates: ChartPointSchema,
-        description: z.string(),
-      })),
-    }).optional(),
-  }),
-  
-  zones: z.object({
-    accumulation: z.array(z.object({
-      topLeft: ChartPointSchema,
-      bottomRight: ChartPointSchema,
-      description: z.string(),
-      strength: z.number(),
-    })),
-    distribution: z.array(z.object({
-      topLeft: ChartPointSchema,
-      bottomRight: ChartPointSchema,
-      description: z.string(),
-      strength: z.number(),
-    })),
-    demand: z.array(z.object({
-      coordinates: z.array(ChartPointSchema),
-      description: z.string(),
-      strength: z.number(),
-    })),
-    supply: z.array(z.object({
-      coordinates: z.array(ChartPointSchema),
-      description: z.string(),
-      strength: z.number(),
-    })),
-  }),
-  
-  annotations: z.array(z.object({
-    text: z.string(),
-    position: ChartPointSchema,
-    type: z.enum(['entry', 'exit', 'warning', 'opportunity', 'info']),
-    color: z.string(),
-    fontSize: z.number().optional(),
-  })),
+  fibonacciLevels: z.array(z.object({
+    level: z.string(),
+    price: z.number(),
+    yCoordinate: z.number(),
+    description: z.string(),
+  })).describe('Fibonacci retracement levels if applicable'),
   
   tradingSignals: z.array(z.object({
     type: z.enum(['buy', 'sell', 'wait']),
-    coordinates: ChartPointSchema,
+    x: z.number(),
+    y: z.number(),
     confidence: z.number().min(0).max(100),
     reasoning: z.string(),
-    targets: z.array(z.number()).optional(),
-    stopLoss: z.number().optional(),
-  })),
+  })).describe('Trading signals at specific coordinates'),
   
-  drawings: z.array(PatternDrawingSchema),
+  keyInsights: z.array(z.string()).describe('Key insights and observations'),
 });
 
 export type ChartDrawingAnalysisOutput = z.infer<typeof ChartDrawingAnalysisOutputSchema>;
@@ -188,78 +101,41 @@ const chartDrawingAnalysisPrompt = ai.definePrompt({
 **Your Task:**
 Analyze the chart image and generate technical drawing annotations that would be useful for trading analysis. Focus on the area around the click point but consider the entire chart context.
 
-**Technical Drawing Guidelines:**
+**Analysis Guidelines:**
 
-1. **Coordinate System:**
-   - Use pixel coordinates relative to the image (0,0 is top-left)
-   - For horizontal lines: start at x=0, end at x={{imageWidth}}
-   - For trendlines: identify at least 2 touch points and extend the line
-   - Ensure all coordinates are within image bounds
-
-2. **Support and Resistance Levels:**
+1. **Support and Resistance Levels:**
    - Identify horizontal price levels where price has repeatedly bounced
-   - Look for at least 2-3 touches to confirm a level
-   - Measure strength by number of touches and time span
-   - Provide exact Y coordinates for horizontal lines
+   - Provide the Y coordinate (pixel position) and estimated price
+   - Rate strength 1-100 based on number of touches and significance
 
-3. **Trendlines:**
-   - Identify ascending/descending trendlines connecting swing lows/highs
-   - Require minimum 2 touch points, prefer 3+ for stronger lines
-   - Calculate slope and project future trajectory
-   - Distinguish between support and resistance trendlines
+2. **Trend Lines:**
+   - Identify ascending/descending trendlines connecting swing points
+   - Provide start and end coordinates (x1,y1 to x2,y2)
+   - Rate strength based on number of touches and trend clarity
 
-4. **Chart Patterns:**
-   - Identify classic patterns: triangles, flags, wedges, head & shoulders, etc.
-   - Map out the pattern boundaries with precise coordinates
-   - Calculate pattern targets and breakout levels
-   - Assess pattern completion percentage
+3. **Chart Patterns:**
+   - Look for triangles, flags, head & shoulders, etc.
+   - Provide key coordinates as comma-separated string
+   - Assess bullish/bearish bias and confidence
 
-5. **Fibonacci Analysis:**
-   - Identify significant swing high and low points for retracement
-   - Calculate key Fibonacci levels (23.6%, 38.2%, 50%, 61.8%, 78.6%)
-   - Provide coordinates for each level
-   - Consider extension levels for targets
+4. **Fibonacci Levels:**
+   - If significant swing high/low visible, calculate key retracements
+   - Focus on 38.2%, 50%, 61.8% levels
+   - Provide Y coordinates and price estimates
 
-6. **Volume Analysis:**
-   - Identify volume spikes and correlate with price action
-   - Mark accumulation/distribution zones
-   - Note volume divergences
-
-7. **Trading Signals:**
-   - Mark potential entry/exit points based on technical analysis
-   - Provide confidence scores and reasoning
-   - Include stop-loss and target suggestions
-
-**Color Coding System:**
-- Support levels: #22c55e (green)
-- Resistance levels: #ef4444 (red)
-- Uptrend lines: #3b82f6 (blue)
-- Downtrend lines: #f59e0b (amber)
-- Fibonacci levels: #8b5cf6 (purple)
-- Patterns: #ec4899 (pink)
-- Volume zones: #6b7280 (gray)
-- Signals: #10b981 (emerald) for buy, #f87171 (red) for sell
+5. **Trading Signals:**
+   - Mark potential entry/exit points near the click area
+   - Provide reasoning and confidence assessment
 
 **Critical Requirements:**
-1. All coordinates must be accurate pixel positions within the image bounds
-2. Provide meaningful descriptions for each drawing element
-3. Include confidence scores based on technical validity
-4. Focus on actionable trading information
-5. Consider the click point as the area of primary interest
-6. Generate at least 3-5 meaningful technical drawings
-7. Ensure drawings are visually clear and don't overlap unnecessarily
-
-**Analysis Process:**
-1. First, analyze the overall chart trend and market structure
-2. Identify key price levels around the click point
-3. Look for patterns and formations
-4. Calculate Fibonacci levels if applicable swing points are visible
-5. Generate trading signals based on technical confluence
-6. Create precise coordinate mappings for all drawings
+- All coordinates must be within image bounds (0 to {{imageWidth}} for X, 0 to {{imageHeight}} for Y)
+- Focus analysis around the clicked point ({{clickPoint.x}}, {{clickPoint.y}})
+- Provide practical, actionable trading information
+- Keep descriptions concise but informative
 
 Chart Image: {{media url=chartImageUri}}
 
-Analyze the chart thoroughly and provide comprehensive technical drawing annotations that would help a trader make informed decisions.`,
+Analyze the chart and provide technical drawing coordinates and insights.`,
 });
 
 const chartDrawingAnalysisFlow = ai.defineFlow(

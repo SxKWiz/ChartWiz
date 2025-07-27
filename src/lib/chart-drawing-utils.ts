@@ -10,14 +10,17 @@ export function convertAIAnalysisToDrawingData(
   const patterns: PatternAnnotation[] = [];
 
   // Convert support levels to annotations
-  analysis.keyLevels.support.forEach((level, index) => {
+  analysis.supportLevels.forEach((level, index) => {
     patterns.push({
       id: `support-${index}`,
       type: 'support',
       name: `Support Level`,
       description: level.description,
       confidence: level.strength,
-      points: level.coordinates,
+      points: [
+        { x: 0, y: level.yCoordinate, price: level.price },
+        { x: 800, y: level.yCoordinate, price: level.price } // Use full width
+      ],
       style: {
         color: '#22c55e',
         strokeWidth: 2,
@@ -34,14 +37,17 @@ export function convertAIAnalysisToDrawingData(
   });
 
   // Convert resistance levels to annotations
-  analysis.keyLevels.resistance.forEach((level, index) => {
+  analysis.resistanceLevels.forEach((level, index) => {
     patterns.push({
       id: `resistance-${index}`,
       type: 'resistance',
       name: `Resistance Level`,
       description: level.description,
       confidence: level.strength,
-      points: level.coordinates,
+      points: [
+        { x: 0, y: level.yCoordinate, price: level.price },
+        { x: 800, y: level.yCoordinate, price: level.price } // Use full width
+      ],
       style: {
         color: '#ef4444',
         strokeWidth: 2,
@@ -57,61 +63,50 @@ export function convertAIAnalysisToDrawingData(
     });
   });
 
-  // Convert uptrend lines
-  analysis.trendLines.uptrend.forEach((trend, index) => {
+  // Convert trendlines
+  analysis.trendLines.forEach((trend, index) => {
     patterns.push({
-      id: `uptrend-${index}`,
+      id: `${trend.type}-${index}`,
       type: 'trendline',
-      name: 'Uptrend Line',
+      name: trend.type === 'uptrend' ? 'Uptrend Line' : 'Downtrend Line',
       description: trend.description,
       confidence: trend.strength,
-      points: trend.points,
+      points: [
+        { x: trend.startX, y: trend.startY },
+        { x: trend.endX, y: trend.endY }
+      ],
       style: {
-        color: '#3b82f6',
+        color: trend.type === 'uptrend' ? '#3b82f6' : '#f59e0b',
         strokeWidth: 3
       },
       visible: true,
       aiGenerated: true,
       metadata: {
-        direction: 'bullish',
+        direction: trend.type === 'uptrend' ? 'bullish' : 'bearish',
         strength: trend.strength,
-        patternType: 'uptrend'
-      }
-    });
-  });
-
-  // Convert downtrend lines
-  analysis.trendLines.downtrend.forEach((trend, index) => {
-    patterns.push({
-      id: `downtrend-${index}`,
-      type: 'trendline',
-      name: 'Downtrend Line',
-      description: trend.description,
-      confidence: trend.strength,
-      points: trend.points,
-      style: {
-        color: '#f59e0b',
-        strokeWidth: 3
-      },
-      visible: true,
-      aiGenerated: true,
-      metadata: {
-        direction: 'bearish',
-        strength: trend.strength,
-        patternType: 'downtrend'
+        patternType: trend.type
       }
     });
   });
 
   // Convert chart patterns
   analysis.patterns.forEach((pattern, index) => {
+    // Parse coordinates string "x1,y1,x2,y2,x3,y3" into points
+    const coordsArray = pattern.coordinates.split(',').map(Number);
+    const points: ChartPoint[] = [];
+    for (let i = 0; i < coordsArray.length; i += 2) {
+      if (i + 1 < coordsArray.length) {
+        points.push({ x: coordsArray[i], y: coordsArray[i + 1] });
+      }
+    }
+
     patterns.push({
       id: `pattern-${index}`,
       type: 'pattern',
       name: pattern.name,
       description: pattern.description,
       confidence: pattern.confidence,
-      points: pattern.coordinates,
+      points,
       style: {
         color: '#ec4899',
         strokeWidth: 2,
@@ -121,67 +116,39 @@ export function convertAIAnalysisToDrawingData(
       aiGenerated: true,
       metadata: {
         patternType: pattern.name,
-        direction: pattern.direction,
-        strength: pattern.confidence,
-        priceTargets: pattern.targets
+        direction: pattern.type,
+        strength: pattern.confidence
       }
     });
   });
 
   // Convert Fibonacci levels
-  if (analysis.fibonacci.retracement) {
-    const fib = analysis.fibonacci.retracement;
-    fib.levels.forEach((level) => {
-      patterns.push({
-        id: `fib-retracement-${level.level}`,
-        type: 'fibonacci',
-        name: `Fibonacci ${level.level}`,
-        description: level.description,
-        confidence: 80,
-        points: [level.coordinates],
-        style: {
-          color: '#8b5cf6',
-          strokeWidth: 1,
-          strokeDasharray: '2,2',
-          fillOpacity: 0.05
-        },
-        visible: true,
-        aiGenerated: true,
-        metadata: {
-          patternType: 'fibonacci_retracement',
-          strength: 80,
-          priceTargets: [level.price]
-        }
-      });
+  analysis.fibonacciLevels.forEach((level, index) => {
+    patterns.push({
+      id: `fib-${index}`,
+      type: 'fibonacci',
+      name: `Fibonacci ${level.level}`,
+      description: level.description,
+      confidence: 80,
+      points: [
+        { x: 0, y: level.yCoordinate, price: level.price },
+        { x: 800, y: level.yCoordinate, price: level.price }
+      ],
+      style: {
+        color: '#8b5cf6',
+        strokeWidth: 1,
+        strokeDasharray: '2,2',
+        fillOpacity: 0.05
+      },
+      visible: true,
+      aiGenerated: true,
+      metadata: {
+        patternType: 'fibonacci_retracement',
+        strength: 80,
+        priceTargets: [level.price]
+      }
     });
-  }
-
-  if (analysis.fibonacci.extension) {
-    const fib = analysis.fibonacci.extension;
-    fib.levels.forEach((level) => {
-      patterns.push({
-        id: `fib-extension-${level.level}`,
-        type: 'fibonacci',
-        name: `Fibonacci Extension ${level.level}`,
-        description: level.description,
-        confidence: 75,
-        points: [level.coordinates],
-        style: {
-          color: '#a855f7',
-          strokeWidth: 1,
-          strokeDasharray: '3,2',
-          fillOpacity: 0.05
-        },
-        visible: true,
-        aiGenerated: true,
-        metadata: {
-          patternType: 'fibonacci_extension',
-          strength: 75,
-          priceTargets: [level.price]
-        }
-      });
-    });
-  }
+  });
 
   // Convert trading signals
   analysis.tradingSignals.forEach((signal, index) => {
@@ -191,7 +158,7 @@ export function convertAIAnalysisToDrawingData(
       name: `${signal.type.toUpperCase()} Signal`,
       description: signal.reasoning,
       confidence: signal.confidence,
-      points: [signal.coordinates],
+      points: [{ x: signal.x, y: signal.y }],
       style: {
         color: signal.type === 'buy' ? '#10b981' : signal.type === 'sell' ? '#f87171' : '#6b7280',
         strokeWidth: 3
@@ -200,55 +167,7 @@ export function convertAIAnalysisToDrawingData(
       aiGenerated: true,
       metadata: {
         direction: signal.type === 'buy' ? 'bullish' : signal.type === 'sell' ? 'bearish' : 'neutral',
-        strength: signal.confidence,
-        priceTargets: signal.targets
-      }
-    });
-  });
-
-  // Convert volume zones
-  analysis.zones.accumulation.forEach((zone, index) => {
-    patterns.push({
-      id: `accumulation-${index}`,
-      type: 'volume',
-      name: 'Accumulation Zone',
-      description: zone.description,
-      confidence: zone.strength,
-      points: [zone.topLeft, zone.bottomRight],
-      style: {
-        color: '#22c55e',
-        strokeWidth: 2,
-        fillOpacity: 0.15
-      },
-      visible: true,
-      aiGenerated: true,
-      metadata: {
-        direction: 'bullish',
-        strength: zone.strength,
-        patternType: 'accumulation'
-      }
-    });
-  });
-
-  analysis.zones.distribution.forEach((zone, index) => {
-    patterns.push({
-      id: `distribution-${index}`,
-      type: 'volume',
-      name: 'Distribution Zone',
-      description: zone.description,
-      confidence: zone.strength,
-      points: [zone.topLeft, zone.bottomRight],
-      style: {
-        color: '#ef4444',
-        strokeWidth: 2,
-        fillOpacity: 0.15
-      },
-      visible: true,
-      aiGenerated: true,
-      metadata: {
-        direction: 'bearish',
-        strength: zone.strength,
-        patternType: 'distribution'
+        strength: signal.confidence
       }
     });
   });
@@ -257,51 +176,30 @@ export function convertAIAnalysisToDrawingData(
   const drawingData: AIDrawingData = {
     patterns,
     keyLevels: {
-      support: analysis.keyLevels.support.map(level => level.price),
-      resistance: analysis.keyLevels.resistance.map(level => level.price)
+      support: analysis.supportLevels.map(level => level.price),
+      resistance: analysis.resistanceLevels.map(level => level.price)
     },
     trendLines: {
-      uptrend: analysis.trendLines.uptrend.map(trend => trend.points),
-      downtrend: analysis.trendLines.downtrend.map(trend => trend.points)
+      uptrend: analysis.trendLines
+        .filter(t => t.type === 'uptrend')
+        .map(t => [{ x: t.startX, y: t.startY }, { x: t.endX, y: t.endY }]),
+      downtrend: analysis.trendLines
+        .filter(t => t.type === 'downtrend')
+        .map(t => [{ x: t.startX, y: t.startY }, { x: t.endX, y: t.endY }])
     },
-    zones: {
-      accumulation: analysis.zones.accumulation.length > 0 ? {
-        start: analysis.zones.accumulation[0].topLeft,
-        end: analysis.zones.accumulation[0].bottomRight
-      } : undefined,
-      distribution: analysis.zones.distribution.length > 0 ? {
-        start: analysis.zones.distribution[0].topLeft,
-        end: analysis.zones.distribution[0].bottomRight
-      } : undefined,
-      demand: analysis.zones.demand.map(zone => zone.coordinates),
-      supply: analysis.zones.supply.map(zone => zone.coordinates)
-    },
+    zones: {},
     fibonacci: {
-      retracement: analysis.fibonacci.retracement ? {
-        start: analysis.fibonacci.retracement.start,
-        end: analysis.fibonacci.retracement.end,
-        levels: analysis.fibonacci.retracement.levels.map(level => ({
-          level: level.level,
+      retracement: analysis.fibonacciLevels.length > 0 ? {
+        start: { x: 0, y: 0 }, // Simplified for now
+        end: { x: 800, y: 600 },
+        levels: analysis.fibonacciLevels.map(level => ({
+          level: parseFloat(level.level) || 0,
           price: level.price,
-          point: level.coordinates
-        }))
-      } : undefined,
-      extension: analysis.fibonacci.extension ? {
-        start: analysis.fibonacci.extension.start,
-        end: analysis.fibonacci.extension.end,
-        levels: analysis.fibonacci.extension.levels.map(level => ({
-          level: level.level,
-          price: level.price,
-          point: level.coordinates
+          point: { x: 0, y: level.yCoordinate }
         }))
       } : undefined
     },
-    annotations: analysis.annotations.map(annotation => ({
-      text: annotation.text,
-      position: annotation.position,
-      type: annotation.type,
-      color: annotation.color
-    }))
+    annotations: [] // Simplified for now
   };
 
   return drawingData;
@@ -317,7 +215,7 @@ export function extractDrawingMetrics(drawingData: AIDrawingData) {
     resistanceLevels: drawingData.keyLevels.resistance.length,
     trendLines: drawingData.trendLines.uptrend.length + drawingData.trendLines.downtrend.length,
     patterns: drawingData.patterns.filter(p => p.type === 'pattern').length,
-    fibonacci: (drawingData.fibonacci.retracement?.levels.length || 0) + (drawingData.fibonacci.extension?.levels.length || 0),
+    fibonacci: drawingData.fibonacci.retracement?.levels.length || 0,
     signals: drawingData.patterns.filter(p => p.type === 'signal').length
   };
 }
@@ -360,12 +258,13 @@ export function generateAnalysisSummary(
     analysis.tradingSignals.forEach((signal, index) => {
       summary += `${index + 1}. **${signal.type.toUpperCase()}** (${signal.confidence}% confidence)\n`;
       summary += `   ${signal.reasoning}\n`;
-      if (signal.targets && signal.targets.length > 0) {
-        summary += `   Targets: ${signal.targets.map(t => `$${t.toLocaleString()}`).join(', ')}\n`;
-      }
-      if (signal.stopLoss) {
-        summary += `   Stop Loss: $${signal.stopLoss.toLocaleString()}\n`;
-      }
+    });
+  }
+
+  if (analysis.keyInsights.length > 0) {
+    summary += `\n💡 **Key Insights:**\n`;
+    analysis.keyInsights.forEach((insight, index) => {
+      summary += `• ${insight}\n`;
     });
   }
 
