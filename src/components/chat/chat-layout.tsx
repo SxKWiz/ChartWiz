@@ -42,10 +42,11 @@ const ComponentLoader = () => (
 
 const defaultPersonas: Persona[] = [
   { id: 'default', name: 'Default', description: 'A balanced, general technical analyst suitable for swing trading.', isCustom: false },
-  { id: 'scalper', name: 'Scalper', description: 'Focuses on very short timeframes (1-15 mins), micro-patterns, and quick profits with tight stop-losses.', isCustom: false },
-  { id: 'day_trader', name: 'Day Trader', description: 'Focuses on hourly and 4-hour charts for intraday trends. Trades are opened and closed within the same day.', isCustom: false },
-  { id: 'swing_trader', name: 'Swing Trader', description: 'Focuses on daily and weekly charts to identify multi-day or multi-week trends.', isCustom: false },
-  { id: 'position_trader', name: 'Position Trader', description: 'Focuses on weekly and monthly charts for long-term macroeconomic trends, ignoring short-term noise.', isCustom: false },
+  { id: 'scalper', name: 'Optimized Scalper', description: 'Ultra-fast 1-15m timeframe analysis with enhanced entry precision and smart stop-loss optimization. Perfect for high-frequency trading.', isCustom: false },
+  { id: 'day_trader', name: 'Optimized Day Trader', description: 'Advanced intraday analysis with session-based entries and dynamic profit targets. Optimized for 30m-4h charts with enhanced risk management.', isCustom: false },
+  { id: 'swing_trader', name: 'Optimized Swing Trader', description: 'Multi-day trend analysis with pullback optimization and probability-based targets. Enhanced 4h-1d chart analysis with improved win rates.', isCustom: false },
+  { id: 'position_trader', name: 'Optimized Position Trader', description: 'Long-term macro analysis with weekly-monthly charts. Enhanced with institutional-level insights and maximum profit optimization.', isCustom: false },
+  { id: 'wizz_ultra', name: '🔮 Wizz Ultra AI', description: '⚡ PREMIUM ⚡ Revolutionary quantum probability analysis with institutional-grade precision. The most advanced AI brain for maximum win rates and profitability. Premium subscription required.', isCustom: false },
 ];
 
 // Create a stable initial session without dynamic values
