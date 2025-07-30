@@ -14,6 +14,9 @@ import { analyzeChartDrawing, type ChartDrawingAnalysisInput, type ChartDrawingA
 import { wizzUltraAIBrain, type WizzUltraAnalysisInput, type WizzUltraAnalysisOutput } from '@/ai/flows/wizz-ultra-ai-brain';
 import { ultraPerformanceOptimizer, type UltraOptimizationInput, type UltraOptimizationOutput } from '@/ai/flows/ultra-performance-optimizer';
 import { cryptoPriceAnalysis, type CryptoPriceQueryInput, type CryptoPriceResponseOutput } from '@/ai/flows/crypto-price-analysis';
+import { enhancedConfidenceAIBrain, type EnhancedConfidenceAnalysisInput, type EnhancedConfidenceAnalysisOutput } from '@/ai/flows/enhanced-confidence-ai-brain';
+import { intelligentTimingAnalyzer, type IntelligentTimingAnalysisInput, type IntelligentTimingAnalysisOutput } from '@/ai/flows/intelligent-timing-analyzer';
+import { comprehensiveTradingKnowledgeBrain, type TradingKnowledgeQueryInput, type TradingKnowledgeResponse } from '@/ai/flows/comprehensive-trading-knowledge-brain';
 import { generateAnalysisContext } from '@/lib/chart-analysis-helpers';
 import type { Message } from '@/lib/types';
 import type { Persona } from '@/lib/types';
@@ -27,7 +30,13 @@ type GetAiResponseOutput = {
   wizzUltraAnalysis?: WizzUltraAnalysisOutput;
   ultraOptimization?: UltraOptimizationOutput;
   cryptoPriceAnalysis?: CryptoPriceResponseOutput;
+  enhancedConfidenceAnalysis?: EnhancedConfidenceAnalysisOutput;
+  timingAnalysis?: IntelligentTimingAnalysisOutput;
+  tradingKnowledge?: TradingKnowledgeResponse;
   alternativeScenario?: string;
+  needsFollowUp?: boolean;
+  followUpRequest?: string;
+  estimatedWaitTime?: string;
 }
 
 export async function getEnhancedAiResponse(formData: FormData): Promise<{ answer?: GetAiResponseOutput; error?: string }> {
@@ -67,6 +76,83 @@ export async function getEnhancedAiResponse(formData: FormData): Promise<{ answe
           return `data:${mimeType};base64,${base64Image}`;
         })
       );
+
+      // Check if Enhanced Confidence AI is selected or if we need confidence assessment
+      const useEnhancedConfidence = personaDescription?.toLowerCase().includes('enhanced') || 
+                                   personaDescription?.toLowerCase().includes('confidence') ||
+                                   question.toLowerCase().includes('confidence') ||
+                                   question.toLowerCase().includes('uncertain') ||
+                                   question.toLowerCase().includes('timing');
+
+      if (useEnhancedConfidence) {
+        console.log('🧠 Activating Enhanced Confidence AI Brain...');
+        
+        const enhancedInput: EnhancedConfidenceAnalysisInput = {
+          primaryChartUri: chartImageUris[0],
+          secondaryChartUri: chartImageUris[1],
+          tertiaryChartUri: chartImageUris[2],
+          question,
+          tradingPersona: personaDescription,
+          riskTolerance,
+          marketDataText,
+          currentTime: new Date().toISOString(),
+          userExperience: 'intermediate', // Could be extracted from user profile
+          newsData,
+          socialData,
+          onChainData,
+        };
+
+        const enhancedResult = await enhancedConfidenceAIBrain(enhancedInput);
+
+        // Check if timing analysis is also needed
+        let timingResult: IntelligentTimingAnalysisOutput | undefined;
+        if (enhancedResult.confidenceAssessment.timingConfidence < 70 || 
+            enhancedResult.timingOptimization.optimalEntryTiming.immediate === false) {
+          
+          console.log('⏰ Running additional timing analysis...');
+          const timingInput: IntelligentTimingAnalysisInput = {
+            primaryChartUri: chartImageUris[0],
+            secondaryChartUri: chartImageUris[1],
+            question: `Analyze optimal entry timing for: ${question}`,
+            tradingPersona: personaDescription,
+            currentTime: new Date().toISOString(),
+            previousAnalysis: enhancedResult.executiveSummary,
+          };
+          timingResult = await intelligentTimingAnalyzer(timingInput);
+        }
+
+        const needsFollowUp = enhancedResult.additionalDataRequest.needsFollowUp || 
+                             (timingResult?.followUpRequest.needsFollowUp ?? false);
+
+        return {
+          answer: {
+            analysis: `🧠 **ENHANCED CONFIDENCE AI ANALYSIS**\n\n${enhancedResult.executiveSummary}\n\n**Confidence Assessment:**\n• Overall Confidence: ${enhancedResult.confidenceAssessment.overallConfidence}%\n• Technical Confidence: ${enhancedResult.confidenceAssessment.technicalConfidence}%\n• Timing Confidence: ${enhancedResult.confidenceAssessment.timingConfidence}%\n\n${enhancedResult.confidenceAssessment.requiresConfirmation ? '⚠️ **REQUIRES ADDITIONAL CONFIRMATION**' : '✅ **CONFIDENCE THRESHOLD MET**'}`,
+            recommendation: enhancedResult.enhancedRecommendation ? {
+              entryPrice: {
+                value: enhancedResult.enhancedRecommendation.entryStrategy.primaryEntry.price,
+                reason: enhancedResult.enhancedRecommendation.entryStrategy.primaryEntry.reason
+              },
+              takeProfit: enhancedResult.enhancedRecommendation.exitStrategy.takeProfitLevels.map(tp => ({
+                value: tp.level,
+                reason: tp.reason
+              })),
+              stopLoss: {
+                value: enhancedResult.enhancedRecommendation.exitStrategy.stopLoss.level,
+                reason: enhancedResult.enhancedRecommendation.exitStrategy.stopLoss.reason
+              },
+              riskRewardRatio: enhancedResult.enhancedRecommendation.riskManagement.riskRewardRatio,
+            } : undefined,
+            enhancedConfidenceAnalysis: enhancedResult,
+            timingAnalysis: timingResult,
+            needsFollowUp,
+            followUpRequest: enhancedResult.additionalDataRequest.needsFollowUp ? 
+              `Please upload ${enhancedResult.additionalDataRequest.requestedTimeframes.map(tf => tf.timeframe).join(', ')} charts. ${enhancedResult.additionalDataRequest.followUpQuestions.join(' ')}` : 
+              (timingResult?.followUpRequest.needsFollowUp ? timingResult.followUpRequest.followUpReason : undefined),
+            estimatedWaitTime: enhancedResult.additionalDataRequest.estimatedWaitTime || timingResult?.followUpRequest.requestedTime,
+            alternativeScenario: enhancedResult.alternativeScenarios[0]?.implication,
+          },
+        };
+      }
 
       // Check if Wizz Ultra AI is selected
       if (personaDescription?.toLowerCase().includes('wizz')) {
@@ -230,14 +316,39 @@ export async function getEnhancedAiResponse(formData: FormData): Promise<{ answe
             };
           }
         } else {
-          // Fallback to regular text chat
-          const result: TextChatOutput = await textChat({ question });
-          return {
-            answer: {
-              analysis: result.answer,
-              recommendation: undefined,
-            },
-          };
+          // Check if this is a trading/crypto knowledge question
+          const tradingKeywords = ['trading', 'strategy', 'indicator', 'pattern', 'analysis', 'risk', 'management', 'psychology', 'blockchain', 'defi', 'technical', 'fundamental', 'market', 'economics', 'regulation'];
+          const isKnowledgeQuery = tradingKeywords.some(keyword => lowerQuestion.includes(keyword));
+          
+          if (isKnowledgeQuery) {
+            console.log('📚 Using Comprehensive Trading Knowledge Brain...');
+            const knowledgeInput: TradingKnowledgeQueryInput = {
+              question,
+              userExperience: 'intermediate', // Could be extracted from user profile
+              requestedDepth: 'detailed',
+              includeExamples: true,
+              includeEducational: true,
+            };
+            
+            const knowledgeResult = await comprehensiveTradingKnowledgeBrain(knowledgeInput);
+            
+            return {
+              answer: {
+                analysis: `📚 **COMPREHENSIVE TRADING KNOWLEDGE**\n\n${knowledgeResult.directAnswer}\n\n**Detailed Explanation:**\n${knowledgeResult.detailedExplanation}`,
+                tradingKnowledge: knowledgeResult,
+                recommendation: undefined,
+              },
+            };
+          } else {
+            // Fallback to regular text chat
+            const result: TextChatOutput = await textChat({ question });
+            return {
+              answer: {
+                analysis: result.answer,
+                recommendation: undefined,
+              },
+            };
+          }
         }
       }
     }
@@ -330,16 +441,43 @@ export async function getAiResponse(formData: FormData): Promise<{ answer?: GetA
           },
         };
       }
-    } else {
-      const result: TextChatOutput = await textChat({ question });
-      return {
-        answer: {
-          analysis: result.answer,
-          recommendation: undefined,
-          alternativeScenario: undefined,
-        },
-      };
-    }
+          } else {
+        // Check if this is a trading/crypto knowledge question
+        const lowerQuestion = question.toLowerCase();
+        const tradingKeywords = ['trading', 'strategy', 'indicator', 'pattern', 'analysis', 'risk', 'management', 'psychology', 'blockchain', 'defi', 'technical', 'fundamental', 'market', 'economics', 'regulation'];
+        const isKnowledgeQuery = tradingKeywords.some(keyword => lowerQuestion.includes(keyword));
+        
+        if (isKnowledgeQuery) {
+          console.log('📚 Using Comprehensive Trading Knowledge Brain...');
+          const knowledgeInput: TradingKnowledgeQueryInput = {
+            question,
+            userExperience: 'intermediate', // Could be extracted from user profile
+            requestedDepth: 'detailed',
+            includeExamples: true,
+            includeEducational: true,
+          };
+          
+          const knowledgeResult = await comprehensiveTradingKnowledgeBrain(knowledgeInput);
+          
+          return {
+            answer: {
+              analysis: `📚 **COMPREHENSIVE TRADING KNOWLEDGE**\n\n${knowledgeResult.directAnswer}\n\n**Detailed Explanation:**\n${knowledgeResult.detailedExplanation}`,
+              tradingKnowledge: knowledgeResult,
+              recommendation: undefined,
+              alternativeScenario: undefined,
+            },
+          };
+        } else {
+          const result: TextChatOutput = await textChat({ question });
+          return {
+            answer: {
+              analysis: result.answer,
+              recommendation: undefined,
+              alternativeScenario: undefined,
+            },
+          };
+        }
+      }
   } catch (e) {
     console.error(e);
     const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
